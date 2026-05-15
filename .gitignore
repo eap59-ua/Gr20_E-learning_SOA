@@ -1,0 +1,84 @@
+# ===========================================================
+# .gitignore — Proyecto MTIS Grupo 20 (multi-tecnología)
+# ===========================================================
+
+# ---------- Mule 4 / Anypoint Studio ----------
+target/
+.mule/
+.classpath
+.project
+.settings/
+.studio/
+.factorypath
+.mvn/
+*.iml
+.idea/
+mule-*.jar
+
+# ---------- Maven ----------
+*.flattened-pom.xml
+dependency-reduced-pom.xml
+build.log
+
+# ---------- Java ----------
+*.class
+*.log
+hs_err_pid*
+
+# ---------- Node.js / Frontend ----------
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+dist/
+build/
+.next/
+.nuxt/
+.cache/
+.parcel-cache/
+.env
+.env.local
+
+# ---------- Sistema operativo ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+
+# ---------- Editores ----------
+.vscode/
+*.code-workspace
+
+# ---------- BBDD ----------
+*.dump
+*.sqlitedb
+mysql-data/
+data/
+
+# ---------- Credenciales / secretos ----------
+*.pem
+*.key
+*-secret.properties
+secrets/
+.credentials
+
+# ---------- Logs y temporales ----------
+logs/
+*.log
+*.tmp
+*.bak
+
+# ---------- Buzón temporal del equipo ----------
+# Esta carpeta es solo de trabajo local de Erardo para clasificar
+# lo que mandan por WhatsApp. NO se versiona.
+Equipo/
+
+# ---------- NO IGNORAR ----------
+# Necesitamos versionar estos aunque coincidan con patrones
+!docs/**/*.pdf
+!docs/**/*.pptx
+!**/test-requests/*.xml
+!contratos/**/*.wsdl
+!contratos/**/*.yaml
+!contratos/**/*.yml

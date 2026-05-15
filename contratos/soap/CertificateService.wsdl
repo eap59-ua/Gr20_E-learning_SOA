@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wsdl:definitions
+    name="CertificateService"
+    targetNamespace="http://mtis.ua.es/elearning/certificates"
+    xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+    xmlns:tns="http://mtis.ua.es/elearning/certificates">
+
+  <wsdl:types>
+    <xs:schema targetNamespace="http://mtis.ua.es/elearning/certificates" elementFormDefault="qualified">
+      <xs:simpleType name="CertificateStatusType">
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="GENERATED"/>
+          <xs:enumeration value="PENDING"/>
+          <xs:enumeration value="FAILED"/>
+          <xs:enumeration value="NOT_ELIGIBLE"/>
+        </xs:restriction>
+      </xs:simpleType>
+
+      <xs:complexType name="ServiceFaultType">
+        <xs:sequence>
+          <xs:element name="code" type="xs:string"/>
+          <xs:element name="message" type="xs:string"/>
+          <xs:element name="detail" type="xs:string" minOccurs="0"/>
+        </xs:sequence>
+      </xs:complexType>
+
+      <xs:element name="ServiceFault" type="tns:ServiceFaultType"/>
+
+      <xs:element name="generateCertificateRequest">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="studentId" type="xs:string"/>
+            <xs:element name="courseId" type="xs:string"/>
+            <xs:element name="finalGrade" type="xs:decimal"/>
+            <xs:element name="completionDate" type="xs:date"/>
+            <xs:element name="requestId" type="xs:string" minOccurs="0"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+
+      <xs:element name="generateCertificateResponse">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="certificateId" type="xs:string" minOccurs="0"/>
+            <xs:element name="studentId" type="xs:string"/>
+            <xs:element name="courseId" type="xs:string"/>
+            <xs:element name="status" type="tns:CertificateStatusType"/>
+            <xs:element name="issueDate" type="xs:date" minOccurs="0"/>
+            <xs:element name="repositoryReference" type="xs:string" minOccurs="0"/>
+            <xs:element name="message" type="xs:string" minOccurs="0"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+
+      <xs:element name="getCertificateRequest">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="certificateId" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+
+      <xs:element name="getCertificateResponse">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="certificateId" type="xs:string"/>
+            <xs:element name="studentId" type="xs:string"/>
+            <xs:element name="courseId" type="xs:string"/>
+            <xs:element name="finalGrade" type="xs:decimal" minOccurs="0"/>
+            <xs:element name="completionDate" type="xs:date" minOccurs="0"/>
+            <xs:element name="issueDate" type="xs:date" minOccurs="0"/>
+            <xs:element name="status" type="tns:CertificateStatusType"/>
+            <xs:element name="repositoryReference" type="xs:string" minOccurs="0"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:schema>
+  </wsdl:types>
+
+  <wsdl:message name="GenerateCertificateInput">
+    <wsdl:part name="parameters" element="tns:generateCertificateRequest"/>
+  </wsdl:message>
+
+  <wsdl:message name="GenerateCertificateOutput">
+    <wsdl:part name="parameters" element="tns:generateCertificateResponse"/>
+  </wsdl:message>
+
+  <wsdl:message name="GetCertificateInput">
+    <wsdl:part name="parameters" element="tns:getCertificateRequest"/>
+  </wsdl:message>
+
+  <wsdl:message name="GetCertificateOutput">
+    <wsdl:part name="parameters" element="tns:getCertificateResponse"/>
+  </wsdl:message>
+
+  <wsdl:message name="ServiceFaultMessage">
+    <wsdl:part name="fault" element="tns:ServiceFault"/>
+  </wsdl:message>
+
+  <wsdl:portType name="CertificatePortType">
+    <wsdl:operation name="generateCertificate">
+      <wsdl:input message="tns:GenerateCertificateInput"/>
+      <wsdl:output message="tns:GenerateCertificateOutput"/>
+      <wsdl:fault name="ServiceFault" message="tns:ServiceFaultMessage"/>
+    </wsdl:operation>
+
+    <wsdl:operation name="getCertificate">
+      <wsdl:input message="tns:GetCertificateInput"/>
+      <wsdl:output message="tns:GetCertificateOutput"/>
+      <wsdl:fault name="ServiceFault" message="tns:ServiceFaultMessage"/>
+    </wsdl:operation>
+  </wsdl:portType>
+
+  <wsdl:binding name="CertificateBinding" type="tns:CertificatePortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+
+    <wsdl:operation name="generateCertificate">
+      <soap:operation soapAction="http://mtis.ua.es/elearning/certificates/generateCertificate"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="ServiceFault">
+        <soap:fault name="ServiceFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="getCertificate">
+      <soap:operation soapAction="http://mtis.ua.es/elearning/certificates/getCertificate"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="ServiceFault">
+        <soap:fault name="ServiceFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <wsdl:service name="CertificateService">
+    <wsdl:port name="CertificatePort" binding="tns:CertificateBinding">
+      <soap:address location="http://localhost:8080/axis2/services/CertificateService"/>
+    </wsdl:port>
+  </wsdl:service>
+
+</wsdl:definitions>

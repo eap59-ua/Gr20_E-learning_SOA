@@ -1,0 +1,389 @@
+openapi: 3.0.3
+info:
+  title: UserService API
+  description: |
+    Servicio de gestión de usuarios de la plataforma E-Learning (Escenario 20).
+    Clasificación SOA: Entity-centric Service (Thomas Erl).
+    Contrato: contract-first, OpenAPI 3.0.
+  version: 1.0.0
+  contact:
+    name: Grupo 20 – MTIS 2025-2026
+    email: grupo20@alu.ua.es
+
+servers:
+  - url: https://elearning.ua.es/api/v1
+    description: Servidor de producción
+  - url: http://localhost:3000/api/v1
+    description: Servidor de desarrollo local
+
+tags:
+  - name: users
+    description: Operaciones sobre usuarios del sistema
+
+paths:
+
+  /users:
+    get:
+      tags: [users]
+      summary: Listar todos los usuarios
+      description: Devuelve la lista completa de usuarios registrados. Solo accesible por administradores.
+      operationId: listUsers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: role
+          in: query
+          required: false
+          description: Filtrar usuarios por rol
+          schema:
+            type: string
+            enum: [student, instructor, admin]
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Lista de usuarios obtenida correctamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserSummary'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [users]
+      summary: Crear un nuevo usuario
+      description: Registra un nuevo usuario en el sistema y envía notificación de bienvenida.
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        '201':
+          description: Usuario creado correctamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: El email ya está registrado en el sistema
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /users/{userId}:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        description: Identificador único del usuario
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      tags: [users]
+      summary: Obtener usuario por ID
+      description: Devuelve los datos completos de un usuario específico.
+      operationId: getUserById
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Usuario encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [users]
+      summary: Actualizar datos de usuario
+      description: Modifica los datos de un usuario existente.
+      operationId: updateUser
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: Usuario actualizado correctamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [users]
+      summary: Eliminar usuario
+      description: |
+        Elimina un usuario del sistema. Solo se puede ejecutar si el usuario
+        no tiene matrículas activas. Requiere rol administrador.
+      operationId: deleteUser
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Usuario eliminado correctamente
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: No se puede eliminar — el usuario tiene matrículas activas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /users/login:
+    post:
+      tags: [users]
+      summary: Autenticación de usuario
+      description: Valida las credenciales del usuario y devuelve un token JWT.
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Autenticación correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Credenciales incorrectas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token JWT obtenido mediante POST /users/login
+
+  schemas:
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        name:
+          type: string
+          example: "Erardo Aldana"
+        email:
+          type: string
+          format: email
+          example: "erardo@alu.ua.es"
+        role:
+          type: string
+          enum: [student, instructor, admin]
+          example: "student"
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        active:
+          type: boolean
+          default: true
+      required: [id, name, email, role, createdAt]
+
+    UserSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [student, instructor, admin]
+        active:
+          type: boolean
+
+    UserCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Erardo Aldana"
+        email:
+          type: string
+          format: email
+          example: "erardo@alu.ua.es"
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: La contraseña se almacenará con hashing bcrypt + salt
+        role:
+          type: string
+          enum: [student, instructor]
+          default: student
+      required: [name, email, password]
+
+    UserUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [student, instructor, admin]
+        active:
+          type: boolean
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          example: "erardo@alu.ua.es"
+        password:
+          type: string
+          format: password
+      required: [email, password]
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT Bearer token con expiración de 8 horas
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        expiresIn:
+          type: integer
+          description: Segundos hasta la expiración del token
+          example: 28800
+        user:
+          $ref: '#/components/schemas/UserSummary'
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 404
+        message:
+          type: string
+          example: "Usuario no encontrado"
+        timestamp:
+          type: string
+          format: date-time
+      required: [code, message]
+
+  responses:
+    BadRequest:
+      description: Datos de la petición incorrectos o incompletos
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: No autenticado — token JWT ausente o inválido
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: No autorizado — rol insuficiente para esta operación
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Recurso no encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalError:
+      description: Error interno del servidor
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

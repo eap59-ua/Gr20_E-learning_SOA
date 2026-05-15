@@ -1,0 +1,513 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  CertificateService — Mule 4 Implementation
+  ----------------------------------------------------------------------------
+  EXPLICACIÓN GENERAL:
+  Servicio SOAP que materializa el contrato CertificateService.wsdl.
+  Expone dos operaciones (sección 5.2 de la memoria):
+    - generateCertificate: emite un certificado tras validar la nota mínima
+    - getCertificate:      consulta un certificado por su ID
+
+  ARQUITECTURA DEL FLOW:
+    HTTP Listener  →  Logger  →  Choice (por SOAPAction)
+                                   ├── flow-generateCertificate
+                                   └── flow-getCertificate
+                                   └── Default: SOAP Fault
+
+  SEGÚN ENUNCIADO:
+    - Sección 6.4 Gestión de errores: SOAP Fault con código, message, detail
+    - Sección 7.2.4 Idempotencia: requestId opcional para evitar duplicados
+    - Sección 9.1 paso 4: solo se certifica si finalGrade >= passingGrade
+  ============================================================================
+-->
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core
+        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/db
+        http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+        http://www.mulesoft.org/schema/mule/ee/core
+        http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/http
+        http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <!--
+      Carga de propiedades. Aísla la configuración del flow (sección 7.1.2).
+    -->
+    <configuration-properties doc:name="properties"
+                              doc:id="props-cert"
+                              file="config/application.properties"/>
+
+    <!--
+      Listener HTTP. El puerto 8081 lo usa SOLO este servicio.
+      El puerto del CoursePurchaseProcessService será 8082.
+    -->
+    <http:listener-config name="HTTP_Listener_config_cert"
+                          doc:name="HTTP Listener config"
+                          doc:id="http-cert">
+        <http:listener-connection host="${http.host}" port="${http.port}"/>
+    </http:listener-config>
+
+    <!--
+      Conector a MySQL. Driver MySQL Connector/J 8.x.
+      Credenciales unificadas con el resto del equipo: mule / mule123.
+    -->
+    <db:config name="MySQL_Config_cert" doc:name="MySQL config" doc:id="db-cert">
+        <db:my-sql-connection host="${db.host}"
+                              port="${db.port}"
+                              user="${db.user}"
+                              password="${db.password}"
+                              database="${db.name}"/>
+    </db:config>
+
+    <!--
+      Cliente HTTP hacia EmailNotificationService (REST, sección 5.1).
+      Solo se invoca al final del flow de generación con éxito.
+    -->
+    <http:request-config name="EmailNotification_Config"
+                         doc:name="Email Notification config"
+                         doc:id="http-email">
+        <http:request-connection host="${notification.host}"
+                                 port="${notification.port}"/>
+    </http:request-config>
+
+    <!--
+      ========================================================================
+      FLOW PRINCIPAL: dispatcher por SOAPAction
+      ========================================================================
+      Recibe cualquier petición SOAP en /services/CertificateService y la
+      enruta a la operación adecuada según el header SOAPAction.
+    -->
+    <flow name="certificate-service-main" doc:id="flow-main">
+        <http:listener doc:name="POST /services/CertificateService"
+                       doc:id="listener-main"
+                       config-ref="HTTP_Listener_config_cert"
+                       path="/services/CertificateService"
+                       allowedMethods="POST">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+                                       --- { "Content-Type": "text/xml; charset=UTF-8" }]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="500">
+                <http:body><![CDATA[#[vars.faultPayload default payload]]]></http:body>
+                <http:headers><![CDATA[#[output application/java
+                                       --- { "Content-Type": "text/xml; charset=UTF-8" }]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+
+        <!-- Almacenamos el SOAPAction para enrutar la petición -->
+        <set-variable variableName="soapAction"
+                      value='#[attributes.headers.soapaction default attributes.headers."SOAPAction" default ""]'
+                      doc:name="Set soapAction"/>
+
+        <logger level="INFO"
+                doc:name="Log request"
+                message='#["[CertificateService] SOAPAction=" ++ vars.soapAction]'/>
+
+        <!--
+          Choice: enruta según operación.
+          SEGÚN ENUNCIADO (sección 6.2): cada operación tiene su soapAction.
+        -->
+        <choice doc:name="Route by operation">
+            <when expression='#[vars.soapAction contains "generateCertificate"]'>
+                <flow-ref name="flow-generateCertificate" doc:name="→ generateCertificate"/>
+            </when>
+            <when expression='#[vars.soapAction contains "getCertificate"]'>
+                <flow-ref name="flow-getCertificate" doc:name="→ getCertificate"/>
+            </when>
+            <otherwise>
+                <flow-ref name="sub-buildSoapFault-unsupported"
+                          doc:name="→ SOAP Fault (operación no soportada)"/>
+            </otherwise>
+        </choice>
+    </flow>
+
+    <!--
+      ========================================================================
+      FLOW: generateCertificate
+      ========================================================================
+      PASOS (mapean con sección 9.1 paso 4 del proceso de negocio):
+        1. Parsear SOAP envelope → extraer parámetros
+        2. Idempotencia: si requestId ya existe, devolver el certificado previo
+        3. Validar nota mínima (finalGrade >= passingGrade)
+        4. Generar certificateId (UUID) y repositoryReference
+        5. INSERT en MySQL
+        6. (best-effort) Notificar via EmailNotificationService
+        7. Devolver SOAP envelope con status=GENERATED
+    -->
+    <flow name="flow-generateCertificate" doc:id="flow-gen">
+
+        <!-- 1) Parseo del SOAP envelope -->
+        <ee:transform doc:name="Parse SOAP request">
+            <ee:variables>
+                <ee:set-variable variableName="req"><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns cer http://mtis.ua.es/elearning/certificates
+---
+{
+  studentId:      (payload.soap#Envelope.soap#Body.cer#generateCertificateRequest.cer#studentId) as String,
+  courseId:       (payload.soap#Envelope.soap#Body.cer#generateCertificateRequest.cer#courseId) as String,
+  finalGrade:     (payload.soap#Envelope.soap#Body.cer#generateCertificateRequest.cer#finalGrade) as Number,
+  /*
+    Validamos que el campo cumple xs:date y lo normalizamos como String
+    "yyyy-MM-dd" para insertarlo en MySQL (columna DATE).
+  */
+  completionDate: ((payload.soap#Envelope.soap#Body.cer#generateCertificateRequest.cer#completionDate)
+                    as Date { format: "yyyy-MM-dd" }) as String { format: "yyyy-MM-dd" },
+  requestId:      (payload.soap#Envelope.soap#Body.cer#generateCertificateRequest.cer#requestId default "") as String
+}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <logger level="INFO"
+                message='#["[generateCertificate] studentId=" ++ vars.req.studentId
+                          ++ " courseId=" ++ vars.req.courseId
+                          ++ " grade="    ++ (vars.req.finalGrade as String)
+                          ++ " reqId="    ++ vars.req.requestId]'/>
+
+        <!-- 2) Idempotencia: ¿este requestId ya generó un certificado? -->
+        <db:select doc:name="Check idempotency" config-ref="MySQL_Config_cert">
+            <db:sql><![CDATA[SELECT certificate_id, student_id, course_id, status,
+                                    issue_date, repository_reference
+                             FROM certificates
+                             WHERE request_id = :requestId AND request_id <> ''
+                             LIMIT 1]]></db:sql>
+            <db:input-parameters><![CDATA[#[{ requestId: vars.req.requestId }]]]></db:input-parameters>
+        </db:select>
+        <set-variable variableName="existing" value="#[payload]" doc:name="Set existing"/>
+
+        <choice doc:name="Already generated?">
+            <when expression="#[sizeOf(vars.existing) > 0]">
+                <!-- Devolver el mismo certificado: idempotencia (sección 7.2.4) -->
+                <ee:transform doc:name="Build idempotent response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns cer http://mtis.ua.es/elearning/certificates
+var row = vars.existing[0]
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      cer#generateCertificateResponse: {
+        cer#certificateId:       row.certificate_id,
+        cer#studentId:           row.student_id,
+        cer#courseId:            row.course_id,
+        cer#status:              row.status,
+        cer#issueDate:           row.issue_date as String { format: "yyyy-MM-dd" },
+        cer#repositoryReference: row.repository_reference,
+        cer#message:             "Certificate already generated (idempotent response)"
+      }
+    }
+  }
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </when>
+            <otherwise>
+                <!-- 3) Validación de elegibilidad: nota mínima -->
+                <choice doc:name="Eligible?">
+                    <when expression="#[vars.req.finalGrade as Number &lt; (p('certificate.passingGrade') as Number)]">
+                        <!-- No supera el mínimo: NOT_ELIGIBLE (no es Fault, es respuesta de negocio) -->
+                        <ee:transform doc:name="Build NOT_ELIGIBLE response">
+                            <ee:message>
+                                <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns cer http://mtis.ua.es/elearning/certificates
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      cer#generateCertificateResponse: {
+        cer#studentId: vars.req.studentId,
+        cer#courseId:  vars.req.courseId,
+        cer#status:    "NOT_ELIGIBLE",
+        cer#message:   "Final grade " ++ (vars.req.finalGrade as String)
+                        ++ " is below the minimum required ("
+                        ++ p('certificate.passingGrade') ++ ")"
+      }
+    }
+  }
+}]]></ee:set-payload>
+                            </ee:message>
+                        </ee:transform>
+                    </when>
+                    <otherwise>
+                        <!-- 4) Generar identificadores -->
+                        <ee:transform doc:name="Generate IDs">
+                            <ee:variables>
+                                <ee:set-variable variableName="newCert"><![CDATA[%dw 2.0
+output application/java
+import * from dw::Runtime
+import * from dw::core::Strings
+var uuid = uuid()
+---
+{
+  certificateId:       uuid,
+  repositoryReference: (p('certificate.repositoryPrefix') default "REPO-CERT-")
+                       ++ (uuid[0 to 7]),
+  issueDate:           now() as String { format: "yyyy-MM-dd" }
+}]]></ee:set-variable>
+                            </ee:variables>
+                        </ee:transform>
+
+                        <!-- 5) Persistencia -->
+                        <db:insert doc:name="INSERT certificate" config-ref="MySQL_Config_cert">
+                            <db:sql><![CDATA[INSERT INTO certificates
+                                (certificate_id, student_id, course_id, final_grade,
+                                 completion_date, issue_date, repository_reference,
+                                 status, request_id)
+                                VALUES
+                                (:certificateId, :studentId, :courseId, :finalGrade,
+                                 :completionDate, :issueDate, :repositoryReference,
+                                 'GENERATED', :requestId)]]></db:sql>
+                            <db:input-parameters><![CDATA[#[{
+                                certificateId:       vars.newCert.certificateId,
+                                studentId:           vars.req.studentId,
+                                courseId:            vars.req.courseId,
+                                finalGrade:          vars.req.finalGrade,
+                                completionDate:      vars.req.completionDate,
+                                issueDate:           vars.newCert.issueDate,
+                                repositoryReference: vars.newCert.repositoryReference,
+                                requestId:           vars.req.requestId
+                            }]]]></db:input-parameters>
+                        </db:insert>
+
+                        <!-- 6) Notificación (best-effort, NO bloquea la respuesta) -->
+                        <try doc:name="Notify (best-effort)">
+                            <http:request method="POST"
+                                          path="${notification.basePath}/notifications/certificate"
+                                          doc:name="POST /notifications/certificate"
+                                          config-ref="EmailNotification_Config">
+                                <http:body><![CDATA[#[output application/json
+---
+{
+  userId:        vars.req.studentId,
+  certificateId: vars.newCert.certificateId,
+  email:         vars.req.studentId ++ "@alu.ua.es"
+}]]]></http:body>
+                                <http:headers><![CDATA[#[{"Content-Type": "application/json"}]]]></http:headers>
+                            </http:request>
+                            <error-handler>
+                                <on-error-continue doc:name="Ignore notification errors">
+                                    <logger level="WARN"
+                                            message='#["[generateCertificate] Notification failed (non-blocking): " ++ (error.description default "n/a")]'/>
+                                </on-error-continue>
+                            </error-handler>
+                        </try>
+
+                        <!-- 7) Respuesta SOAP -->
+                        <ee:transform doc:name="Build SOAP response">
+                            <ee:message>
+                                <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns cer http://mtis.ua.es/elearning/certificates
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      cer#generateCertificateResponse: {
+        cer#certificateId:       vars.newCert.certificateId,
+        cer#studentId:           vars.req.studentId,
+        cer#courseId:            vars.req.courseId,
+        cer#status:              "GENERATED",
+        cer#issueDate:           vars.newCert.issueDate,
+        cer#repositoryReference: vars.newCert.repositoryReference,
+        cer#message:             "Certificate issued successfully"
+      }
+    }
+  }
+}]]></ee:set-payload>
+                            </ee:message>
+                        </ee:transform>
+                    </otherwise>
+                </choice>
+            </otherwise>
+        </choice>
+
+        <error-handler>
+            <on-error-continue doc:name="Map to SOAP Fault" type="DB:CONNECTIVITY, DB:BAD_SQL_SYNTAX, ANY">
+                <flow-ref name="sub-buildSoapFault-internal" doc:name="→ SOAP Fault interno"/>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <!--
+      ========================================================================
+      FLOW: getCertificate
+      ========================================================================
+      Recupera un certificado por su ID. Si no existe → SOAP Fault NOT_FOUND.
+    -->
+    <flow name="flow-getCertificate" doc:id="flow-get">
+
+        <ee:transform doc:name="Parse SOAP request">
+            <ee:variables>
+                <ee:set-variable variableName="certificateId"><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns cer http://mtis.ua.es/elearning/certificates
+---
+(payload.soap#Envelope.soap#Body.cer#getCertificateRequest.cer#certificateId) as String]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <logger level="INFO" message='#["[getCertificate] certificateId=" ++ vars.certificateId]'/>
+
+        <db:select doc:name="SELECT certificate" config-ref="MySQL_Config_cert">
+            <db:sql><![CDATA[SELECT certificate_id, student_id, course_id, final_grade,
+                                    completion_date, issue_date, status, repository_reference
+                             FROM certificates
+                             WHERE certificate_id = :certificateId
+                             LIMIT 1]]></db:sql>
+            <db:input-parameters><![CDATA[#[{ certificateId: vars.certificateId }]]]></db:input-parameters>
+        </db:select>
+
+        <choice doc:name="Found?">
+            <when expression="#[sizeOf(payload) == 0]">
+                <set-variable variableName="faultCode"    value="NOT_FOUND"/>
+                <set-variable variableName="faultMessage" value='#["No certificate with id " ++ vars.certificateId]'/>
+                <flow-ref name="sub-buildSoapFault-business" doc:name="→ SOAP Fault NOT_FOUND"/>
+            </when>
+            <otherwise>
+                <ee:transform doc:name="Build SOAP response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns cer http://mtis.ua.es/elearning/certificates
+var row = payload[0]
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      cer#getCertificateResponse: {
+        cer#certificateId:       row.certificate_id,
+        cer#studentId:           row.student_id,
+        cer#courseId:            row.course_id,
+        cer#finalGrade:          row.final_grade,
+        cer#completionDate:      row.completion_date as String { format: "yyyy-MM-dd" },
+        cer#issueDate:           row.issue_date as String { format: "yyyy-MM-dd" },
+        cer#status:              row.status,
+        cer#repositoryReference: row.repository_reference
+      }
+    }
+  }
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </otherwise>
+        </choice>
+
+        <error-handler>
+            <on-error-continue doc:name="Map to SOAP Fault" type="ANY">
+                <flow-ref name="sub-buildSoapFault-internal"/>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <!--
+      ========================================================================
+      SUB-FLOWS: construcción de SOAP Faults
+      ========================================================================
+      SEGÚN ENUNCIADO (sección 6.4): los errores SOAP se devuelven mediante
+      el mecanismo estándar SOAP Fault con código, mensaje y detalle.
+    -->
+    <sub-flow name="sub-buildSoapFault-unsupported">
+        <ee:transform doc:name="Build SOAP Fault: unsupported op">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns cer http://mtis.ua.es/elearning/certificates
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      soap#Fault: {
+        faultcode:   "soap:Client",
+        faultstring: "Unsupported SOAP operation",
+        detail: {
+          cer#ServiceFault: {
+            cer#code:    "UNSUPPORTED_OPERATION",
+            cer#message: "SOAPAction not recognised: " ++ (vars.soapAction default "<missing>"),
+            cer#detail:  "Allowed: generateCertificate, getCertificate"
+          }
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </sub-flow>
+
+    <sub-flow name="sub-buildSoapFault-business">
+        <ee:transform doc:name="Build SOAP Fault: business">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns cer http://mtis.ua.es/elearning/certificates
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      soap#Fault: {
+        faultcode:   "soap:Client",
+        faultstring: vars.faultMessage default "Business error",
+        detail: {
+          cer#ServiceFault: {
+            cer#code:    vars.faultCode default "BUSINESS_ERROR",
+            cer#message: vars.faultMessage default "Business error",
+            cer#detail:  vars.faultDetail default ""
+          }
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <set-variable variableName="faultPayload" value="#[payload]"/>
+    </sub-flow>
+
+    <sub-flow name="sub-buildSoapFault-internal">
+        <ee:transform doc:name="Build SOAP Fault: internal">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns cer http://mtis.ua.es/elearning/certificates
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      soap#Fault: {
+        faultcode:   "soap:Server",
+        faultstring: "Internal Server Error",
+        detail: {
+          cer#ServiceFault: {
+            cer#code:    "INTERNAL_ERROR",
+            cer#message: (error.description default "Unexpected error"),
+            cer#detail:  (error.errorType.identifier default "")
+          }
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <set-variable variableName="faultPayload" value="#[payload]"/>
+    </sub-flow>
+
+</mule>

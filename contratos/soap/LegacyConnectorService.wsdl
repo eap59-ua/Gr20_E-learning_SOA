@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wsdl:definitions
+    name="LegacyConnectorService"
+    targetNamespace="http://mtis.ua.es/elearning/legacy"
+    xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+    xmlns:tns="http://mtis.ua.es/elearning/legacy">
+
+  <wsdl:types>
+    <xs:schema targetNamespace="http://mtis.ua.es/elearning/legacy" elementFormDefault="qualified">
+      <xs:simpleType name="SyncStatusType">
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="SUCCESS"/>
+          <xs:enumeration value="PARTIAL"/>
+          <xs:enumeration value="FAILED"/>
+        </xs:restriction>
+      </xs:simpleType>
+
+      <xs:complexType name="ServiceFaultType">
+        <xs:sequence>
+          <xs:element name="code" type="xs:string"/>
+          <xs:element name="message" type="xs:string"/>
+          <xs:element name="detail" type="xs:string" minOccurs="0"/>
+        </xs:sequence>
+      </xs:complexType>
+
+      <xs:element name="ServiceFault" type="tns:ServiceFaultType"/>
+
+      <xs:complexType name="ExternalContentMetadataType">
+        <xs:sequence>
+          <xs:element name="externalContentId" type="xs:string"/>
+          <xs:element name="title" type="xs:string"/>
+          <xs:element name="description" type="xs:string" minOccurs="0"/>
+          <xs:element name="category" type="xs:string" minOccurs="0"/>
+          <xs:element name="lastModified" type="xs:dateTime" minOccurs="0"/>
+          <xs:element name="checksum" type="xs:string" minOccurs="0"/>
+        </xs:sequence>
+      </xs:complexType>
+
+      <xs:element name="getExternalContentsRequest">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="sourceSystem" type="xs:string"/>
+            <xs:element name="catalogId" type="xs:string" minOccurs="0"/>
+            <xs:element name="modifiedSince" type="xs:dateTime" minOccurs="0"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+
+      <xs:element name="getExternalContentsResponse">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="sourceSystem" type="xs:string"/>
+            <xs:element name="contents" type="tns:ExternalContentMetadataType" minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+
+      <xs:element name="synchronizeContentsRequest">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="sourceSystem" type="xs:string"/>
+            <xs:element name="catalogId" type="xs:string" minOccurs="0"/>
+            <xs:element name="requestedBy" type="xs:string" minOccurs="0"/>
+            <xs:element name="requestId" type="xs:string" minOccurs="0"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+
+      <xs:element name="synchronizeContentsResponse">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="syncId" type="xs:string"/>
+            <xs:element name="status" type="tns:SyncStatusType"/>
+            <xs:element name="processedItems" type="xs:int"/>
+            <xs:element name="updatedItems" type="xs:int"/>
+            <xs:element name="failedItems" type="xs:int"/>
+            <xs:element name="startedAt" type="xs:dateTime"/>
+            <xs:element name="finishedAt" type="xs:dateTime" minOccurs="0"/>
+            <xs:element name="message" type="xs:string" minOccurs="0"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:schema>
+  </wsdl:types>
+
+  <wsdl:message name="GetExternalContentsInput">
+    <wsdl:part name="parameters" element="tns:getExternalContentsRequest"/>
+  </wsdl:message>
+
+  <wsdl:message name="GetExternalContentsOutput">
+    <wsdl:part name="parameters" element="tns:getExternalContentsResponse"/>
+  </wsdl:message>
+
+  <wsdl:message name="SynchronizeContentsInput">
+    <wsdl:part name="parameters" element="tns:synchronizeContentsRequest"/>
+  </wsdl:message>
+
+  <wsdl:message name="SynchronizeContentsOutput">
+    <wsdl:part name="parameters" element="tns:synchronizeContentsResponse"/>
+  </wsdl:message>
+
+  <wsdl:message name="ServiceFaultMessage">
+    <wsdl:part name="fault" element="tns:ServiceFault"/>
+  </wsdl:message>
+
+  <wsdl:portType name="LegacyConnectorPortType">
+    <wsdl:operation name="getExternalContents">
+      <wsdl:input message="tns:GetExternalContentsInput"/>
+      <wsdl:output message="tns:GetExternalContentsOutput"/>
+      <wsdl:fault name="ServiceFault" message="tns:ServiceFaultMessage"/>
+    </wsdl:operation>
+
+    <wsdl:operation name="synchronizeContents">
+      <wsdl:input message="tns:SynchronizeContentsInput"/>
+      <wsdl:output message="tns:SynchronizeContentsOutput"/>
+      <wsdl:fault name="ServiceFault" message="tns:ServiceFaultMessage"/>
+    </wsdl:operation>
+  </wsdl:portType>
+
+  <wsdl:binding name="LegacyConnectorBinding" type="tns:LegacyConnectorPortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+
+    <wsdl:operation name="getExternalContents">
+      <soap:operation soapAction="http://mtis.ua.es/elearning/legacy/getExternalContents"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="ServiceFault">
+        <soap:fault name="ServiceFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="synchronizeContents">
+      <soap:operation soapAction="http://mtis.ua.es/elearning/legacy/synchronizeContents"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="ServiceFault">
+        <soap:fault name="ServiceFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <wsdl:service name="LegacyConnectorService">
+    <wsdl:port name="LegacyConnectorPort" binding="tns:LegacyConnectorBinding">
+      <soap:address location="http://localhost:8080/axis2/services/LegacyConnectorService"/>
+    </wsdl:port>
+  </wsdl:service>
+
+</wsdl:definitions>

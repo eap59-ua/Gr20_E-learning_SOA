@@ -1,0 +1,469 @@
+openapi: 3.0.3
+info:
+  title: CourseService API
+  description: |
+    Servicio de gestión del catálogo de cursos de la plataforma E-Learning (Escenario 20).
+    Clasificación SOA: Entity-centric Service (Thomas Erl).
+    Contrato: contract-first, OpenAPI 3.0.
+  version: 1.0.0
+  contact:
+    name: Grupo 20 – MTIS 2025-2026
+    email: grupo20@alu.ua.es
+
+servers:
+  - url: https://elearning.ua.es/api/v1
+    description: Servidor de producción
+  - url: http://localhost:3000/api/v1
+    description: Servidor de desarrollo local
+
+tags:
+  - name: courses
+    description: Operaciones sobre el catálogo de cursos
+
+paths:
+
+  /courses:
+    get:
+      tags: [courses]
+      summary: Listar cursos disponibles
+      description: Devuelve el catálogo completo de cursos. Accesible públicamente.
+      operationId: listCourses
+      parameters:
+        - name: category
+          in: query
+          required: false
+          description: Filtrar por categoría temática
+          schema:
+            type: string
+        - name: instructorId
+          in: query
+          required: false
+          description: Filtrar por instructor
+          schema:
+            type: string
+            format: uuid
+        - name: active
+          in: query
+          required: false
+          description: Filtrar cursos activos/inactivos
+          schema:
+            type: boolean
+            default: true
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Catálogo de cursos obtenido correctamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CourseSummary'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [courses]
+      summary: Crear un nuevo curso
+      description: Registra un nuevo curso en la plataforma. Solo instructores y administradores.
+      operationId: createCourse
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourseCreate'
+      responses:
+        '201':
+          description: Curso creado correctamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Ya existe un curso con ese título para el mismo instructor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /courses/{courseId}:
+    parameters:
+      - name: courseId
+        in: path
+        required: true
+        description: Identificador único del curso
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      tags: [courses]
+      summary: Obtener curso por ID
+      description: Devuelve los datos completos de un curso específico.
+      operationId: getCourseById
+      responses:
+        '200':
+          description: Curso encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [courses]
+      summary: Actualizar curso
+      description: Modifica los datos de un curso existente. Solo el instructor propietario o el administrador.
+      operationId: updateCourse
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourseUpdate'
+      responses:
+        '200':
+          description: Curso actualizado correctamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [courses]
+      summary: Eliminar curso
+      description: |
+        Elimina un curso del catálogo. Solo se puede ejecutar si el curso
+        no tiene matrículas activas. Requiere rol administrador.
+      operationId: deleteCourse
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Curso eliminado correctamente
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: No se puede eliminar — el curso tiene matrículas activas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /courses/sync:
+    post:
+      tags: [courses]
+      summary: Sincronizar catálogo con sistema legacy
+      description: |
+        Actualiza el catálogo de cursos con los metadatos obtenidos del
+        LegacyContentRepository. Invocado por el ESB tras recibir datos del
+        LegacyConnectorService (SOAP). Solo administradores.
+      operationId: syncCourseCatalog
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourseSyncRequest'
+      responses:
+        '200':
+          description: Sincronización completada correctamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseSyncResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token JWT obtenido mediante POST /users/login (UserService)
+
+  schemas:
+
+    Course:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          example: "c1d2e3f4-a5b6-7890-cdef-123456789abc"
+        title:
+          type: string
+          example: "Integración de Sistemas Software"
+        description:
+          type: string
+          example: "Curso avanzado sobre metodologías y tecnologías de integración SOA."
+        instructorId:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        instructorName:
+          type: string
+          readOnly: true
+          example: "Prof. García"
+        category:
+          type: string
+          example: "Ingeniería del Software"
+        durationHours:
+          type: integer
+          example: 60
+        price:
+          type: number
+          format: float
+          example: 49.99
+        currency:
+          type: string
+          default: "EUR"
+          example: "EUR"
+        active:
+          type: boolean
+          default: true
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+        legacyContentId:
+          type: string
+          nullable: true
+          description: ID del contenido en el repositorio legacy (si aplica)
+          example: "LEGACY-2024-0042"
+      required: [id, title, instructorId, category, price, createdAt]
+
+    CourseSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        instructorName:
+          type: string
+        category:
+          type: string
+        durationHours:
+          type: integer
+        price:
+          type: number
+          format: float
+        currency:
+          type: string
+        active:
+          type: boolean
+
+    CourseCreate:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 5
+          maxLength: 200
+          example: "Integración de Sistemas Software"
+        description:
+          type: string
+          maxLength: 2000
+        category:
+          type: string
+          example: "Ingeniería del Software"
+        durationHours:
+          type: integer
+          minimum: 1
+          example: 60
+        price:
+          type: number
+          format: float
+          minimum: 0
+          example: 49.99
+        currency:
+          type: string
+          default: "EUR"
+        legacyContentId:
+          type: string
+          nullable: true
+          description: ID del contenido en el repositorio legacy para vincular
+      required: [title, category, durationHours, price]
+
+    CourseUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 5
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 2000
+        category:
+          type: string
+        durationHours:
+          type: integer
+          minimum: 1
+        price:
+          type: number
+          format: float
+          minimum: 0
+        active:
+          type: boolean
+        legacyContentId:
+          type: string
+          nullable: true
+
+    CourseSyncRequest:
+      type: object
+      description: Payload recibido del LegacyConnectorService tras obtener metadatos del repositorio legacy
+      properties:
+        legacyCourses:
+          type: array
+          items:
+            type: object
+            properties:
+              legacyContentId:
+                type: string
+                example: "LEGACY-2024-0042"
+              title:
+                type: string
+              description:
+                type: string
+              category:
+                type: string
+              durationHours:
+                type: integer
+            required: [legacyContentId, title]
+        syncTimestamp:
+          type: string
+          format: date-time
+      required: [legacyCourses, syncTimestamp]
+
+    CourseSyncResponse:
+      type: object
+      properties:
+        created:
+          type: integer
+          description: Número de cursos nuevos creados
+          example: 3
+        updated:
+          type: integer
+          description: Número de cursos existentes actualizados
+          example: 7
+        errors:
+          type: integer
+          description: Número de entradas con error (se registran para revisión)
+          example: 0
+        syncTimestamp:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 404
+        message:
+          type: string
+          example: "Curso no encontrado"
+        timestamp:
+          type: string
+          format: date-time
+      required: [code, message]
+
+  responses:
+    BadRequest:
+      description: Datos de la petición incorrectos o incompletos
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: No autenticado — token JWT ausente o inválido
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: No autorizado — rol insuficiente para esta operación
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Recurso no encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalError:
+      description: Error interno del servidor
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

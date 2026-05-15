@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  EXAMPLE REQUEST: generateCertificate con nota insuficiente
+  ----------------------------------------------------------
+  Demuestra el caso NOT_ELIGIBLE (sección 9.1 paso 4 del enunciado):
+  el alumno no supera la nota mínima → no se genera el certificado, pero
+  tampoco es un Fault: es una respuesta normal con status=NOT_ELIGIBLE.
+-->
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:cer="http://mtis.ua.es/elearning/certificates">
+   <soap:Header/>
+   <soap:Body>
+      <cer:generateCertificateRequest>
+         <cer:studentId>STU-FAIL</cer:studentId>
+         <cer:courseId>COURSE-MTIS-2026</cer:courseId>
+         <cer:finalGrade>3.20</cer:finalGrade>
+         <cer:completionDate>2026-05-14</cer:completionDate>
+         <cer:requestId>REQ-CERT-FAIL-001</cer:requestId>
+      </cer:generateCertificateRequest>
+   </soap:Body>
+</soap:Envelope>

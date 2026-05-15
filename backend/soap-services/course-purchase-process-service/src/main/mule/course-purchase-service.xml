@@ -1,0 +1,851 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  CoursePurchaseProcessService — Mule 4 Implementation (Process Service SOAP)
+  ----------------------------------------------------------------------------
+  EXPLICACIÓN GENERAL:
+  Process Service que ORQUESTA el flujo de compra de un curso. Materializa
+  el contrato CoursePurchaseProcessService.wsdl (5 operaciones) y coordina
+  los servicios entidad/tarea del catálogo (sección 9.5 de la memoria):
+
+      startPurchase  →  CourseService (validar curso) + INSERT compra
+      processPayment →  FinancialGatewayService.process
+      confirmPayment →  FinancialGatewayService.confirm
+      finalizePurchase → EnrollmentService.create (matriculación automática)
+      cancelPurchase →  FinancialGatewayService.cancel (compensación)
+
+  SEGÚN ENUNCIADO:
+    - Sección 7.2.2 Patrón Saga: por coreografía. Se persiste el estado en
+      cada paso de modo que el siguiente servicio pueda reanudar el flujo
+      sin estado conversacional.
+    - Sección 7.2.4 Idempotencia: las operaciones de escritura comprueban
+      el estado actual antes de invocar al servicio externo.
+    - Sección 6.4 SOAP Fault para errores estructurados.
+    - Sección 9.5 paso 4: si el pago falla, se ejecuta compensación
+      (cancelar pago + transición a CANCELLED).
+  ============================================================================
+-->
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core
+        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/db
+        http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+        http://www.mulesoft.org/schema/mule/ee/core
+        http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/http
+        http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <configuration-properties doc:name="properties"
+                              doc:id="props-pur"
+                              file="config/application.properties"/>
+
+    <http:listener-config name="HTTP_Listener_config_pur" doc:id="http-pur">
+        <http:listener-connection host="${http.host}" port="${http.port}"/>
+    </http:listener-config>
+
+    <db:config name="MySQL_Config_pur" doc:id="db-pur">
+        <db:my-sql-connection host="${db.host}"
+                              port="${db.port}"
+                              user="${db.user}"
+                              password="${db.password}"
+                              database="${db.name}"/>
+    </db:config>
+
+    <!-- Clientes REST hacia los 3 servicios coordinados -->
+    <http:request-config name="Course_Config" doc:id="http-course">
+        <http:request-connection host="${course.host}" port="${course.port}"/>
+    </http:request-config>
+
+    <http:request-config name="Payment_Config" doc:id="http-pay">
+        <http:request-connection host="${payment.host}" port="${payment.port}"/>
+    </http:request-config>
+
+    <http:request-config name="Enrollment_Config" doc:id="http-enr">
+        <http:request-connection host="${enrollment.host}" port="${enrollment.port}"/>
+    </http:request-config>
+
+    <!--
+      ========================================================================
+      FLOW PRINCIPAL: dispatcher SOAP por SOAPAction
+      ========================================================================
+    -->
+    <flow name="purchase-service-main">
+        <http:listener config-ref="HTTP_Listener_config_pur"
+                       path="/services/CoursePurchaseProcessService"
+                       allowedMethods="POST">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+                                       --- { "Content-Type": "text/xml; charset=UTF-8" }]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="500">
+                <http:body><![CDATA[#[vars.faultPayload default payload]]]></http:body>
+                <http:headers><![CDATA[#[output application/java
+                                       --- { "Content-Type": "text/xml; charset=UTF-8" }]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+
+        <set-variable variableName="soapAction"
+                      value='#[attributes.headers.soapaction default attributes.headers."SOAPAction" default ""]'/>
+
+        <logger level="INFO" message='#["[PurchaseService] SOAPAction=" ++ vars.soapAction]'/>
+
+        <choice doc:name="Route by operation">
+            <when expression='#[vars.soapAction contains "startPurchase"]'>
+                <flow-ref name="flow-startPurchase"/>
+            </when>
+            <when expression='#[vars.soapAction contains "processPayment"]'>
+                <flow-ref name="flow-processPayment"/>
+            </when>
+            <when expression='#[vars.soapAction contains "confirmPayment"]'>
+                <flow-ref name="flow-confirmPayment"/>
+            </when>
+            <when expression='#[vars.soapAction contains "finalizePurchase"]'>
+                <flow-ref name="flow-finalizePurchase"/>
+            </when>
+            <when expression='#[vars.soapAction contains "cancelPurchase"]'>
+                <flow-ref name="flow-cancelPurchase"/>
+            </when>
+            <otherwise>
+                <flow-ref name="sub-fault-unsupported"/>
+            </otherwise>
+        </choice>
+    </flow>
+
+    <!--
+      ========================================================================
+      FLOW: startPurchase
+      ------------------------------------------------------------------------
+      Pasos (sección 9.5 paso 1: descomposición #1, #2 y #4):
+        1. Parsear SOAP request
+        2. Consultar CourseService para validar que el curso existe y está activo
+        3. INSERT en course_purchases con status=INITIATED
+        4. Devolver purchaseId al cliente
+      ========================================================================
+    -->
+    <flow name="flow-startPurchase">
+
+        <ee:transform doc:name="Parse SOAP">
+            <ee:variables>
+                <ee:set-variable variableName="req"><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  userId:   (payload.soap#Envelope.soap#Body.pur#startPurchaseRequest.pur#userId)   as String,
+  courseId: (payload.soap#Envelope.soap#Body.pur#startPurchaseRequest.pur#courseId) as String,
+  price:    (payload.soap#Envelope.soap#Body.pur#startPurchaseRequest.pur#price)    as Number,
+  currency: (payload.soap#Envelope.soap#Body.pur#startPurchaseRequest.pur#currency) as String
+}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <logger level="INFO"
+                message='#["[startPurchase] user=" ++ vars.req.userId
+                          ++ " course=" ++ vars.req.courseId
+                          ++ " price="  ++ (vars.req.price as String)]'/>
+
+        <!--
+          Validar curso contra CourseService (REST).
+          SEGÚN ENUNCIADO (sección 9.5 flujo paso 2):
+          "El Front-End consulta la información del curso mediante CourseService".
+          Aquí lo hace el Process Service para validar antes de iniciar la Saga.
+          Si la validación falla se marca courseValid=false y el choice de abajo
+          construye el Fault de forma explícita (no deja la decisión al
+          comportamiento por defecto del error handler).
+        -->
+        <set-variable variableName="courseValid" value="#[true]"
+                      doc:name="Init courseValid=true"/>
+
+        <try doc:name="Validate course">
+            <http:request method="GET"
+                          path='#["${course.basePath}/courses/" ++ vars.req.courseId]'
+                          config-ref="Course_Config"
+                          doc:name="GET /courses/{id}">
+                <http:response-validator>
+                    <http:success-status-code-validator values="200..299"/>
+                </http:response-validator>
+            </http:request>
+            <error-handler>
+                <on-error-continue type="HTTP:NOT_FOUND, HTTP:BAD_REQUEST, HTTP:CONNECTIVITY, HTTP:INTERNAL_SERVER_ERROR, HTTP:SERVICE_UNAVAILABLE, HTTP:UNAUTHORIZED, HTTP:FORBIDDEN">
+                    <!--
+                      Cualquier error HTTP del CourseService implica que no
+                      podemos validar el curso → bloqueamos la compra.
+                      Errores 4xx/5xx se traducen a COURSE_NOT_AVAILABLE
+                      en lugar de propagar como INTERNAL_ERROR.
+                    -->
+                    <set-variable variableName="courseValid" value="#[false]"
+                                  doc:name="Mark course as invalid"/>
+                </on-error-continue>
+            </error-handler>
+        </try>
+
+        <choice doc:name="Course exists?">
+            <when expression="#[vars.courseValid == false]">
+                <!-- Curso inexistente o CourseService caído: bloqueamos la compra -->
+                <set-variable variableName="faultCode"    value="COURSE_NOT_AVAILABLE"/>
+                <set-variable variableName="faultMessage"
+                              value='#["Course " ++ vars.req.courseId ++ " not found or CourseService unreachable"]'/>
+                <flow-ref name="sub-fault-business"/>
+            </when>
+            <otherwise>
+                <!-- Curso válido: continuamos con la Saga -->
+                <ee:transform doc:name="Generate purchaseId">
+                    <ee:variables>
+                        <ee:set-variable variableName="purchaseId"><![CDATA[%dw 2.0
+output application/java
+import * from dw::Runtime
+---
+uuid()]]></ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+
+                <db:insert config-ref="MySQL_Config_pur" doc:name="INSERT purchase">
+                    <db:sql><![CDATA[INSERT INTO course_purchases
+                        (purchase_id, user_id, course_id, price, currency, status)
+                        VALUES
+                        (:purchaseId, :userId, :courseId, :price, :currency, 'INITIATED')]]></db:sql>
+                    <db:input-parameters><![CDATA[#[{
+                        purchaseId: vars.purchaseId,
+                        userId:     vars.req.userId,
+                        courseId:   vars.req.courseId,
+                        price:      vars.req.price,
+                        currency:   vars.req.currency
+                    }]]]></db:input-parameters>
+                </db:insert>
+
+                <ee:transform doc:name="Build SOAP response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      pur#startPurchaseResponse: {
+        pur#purchaseId: vars.purchaseId,
+        pur#status:     "INITIATED"
+      }
+    }
+  }
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </otherwise>
+        </choice>
+
+        <error-handler>
+            <on-error-continue type="ANY">
+                <flow-ref name="sub-fault-internal"/>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <!--
+      ========================================================================
+      FLOW: processPayment
+      ------------------------------------------------------------------------
+      Pasos (sección 9.5 descomposición #5 y #6):
+        1. Parsear SOAP
+        2. SELECT compra, verificar status=INITIATED (idempotencia)
+        3. POST a FinancialGatewayService /payments/process
+        4. UPDATE compra con transactionId y status=PAYMENT_PENDING
+      ========================================================================
+    -->
+    <flow name="flow-processPayment">
+
+        <ee:transform doc:name="Parse SOAP">
+            <ee:variables>
+                <ee:set-variable variableName="req"><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  purchaseId:    (payload.soap#Envelope.soap#Body.pur#processPaymentRequest.pur#purchaseId)    as String,
+  paymentMethod: (payload.soap#Envelope.soap#Body.pur#processPaymentRequest.pur#paymentMethod) as String
+}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <flow-ref name="sub-loadPurchase"/>
+
+        <choice>
+            <when expression="#[vars.purchase == null]">
+                <set-variable variableName="faultCode"    value="PURCHASE_NOT_FOUND"/>
+                <set-variable variableName="faultMessage"
+                              value='#["Purchase " ++ vars.req.purchaseId ++ " does not exist"]'/>
+                <flow-ref name="sub-fault-business"/>
+            </when>
+            <when expression='#[vars.purchase.status != "INITIATED" and vars.purchase.transaction_id != null]'>
+                <!-- Idempotencia: ya se procesó, devolvemos el transactionId existente -->
+                <ee:transform doc:name="Idempotent response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      pur#processPaymentResponse: {
+        pur#transactionId: vars.purchase.transaction_id,
+        pur#status:        vars.purchase.status
+      }
+    }
+  }
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </when>
+            <otherwise>
+                <!-- Llamada al sistema externo de pagos -->
+                <ee:transform doc:name="Build PaymentRequest">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  paymentId:   vars.req.purchaseId,
+  userId:      vars.purchase.user_id,
+  amount:      vars.purchase.price,
+  currency:    vars.purchase.currency,
+  description: "Course purchase " ++ vars.purchase.course_id
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+
+                <http:request method="POST"
+                              path="${payment.basePath}/payments/process"
+                              config-ref="Payment_Config"
+                              doc:name="POST /payments/process">
+                    <http:headers><![CDATA[#[{"Content-Type": "application/json"}]]]></http:headers>
+                </http:request>
+
+                <ee:transform doc:name="Capture payment response">
+                    <ee:variables>
+                        <ee:set-variable variableName="paymentResp"><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+
+                <db:update config-ref="MySQL_Config_pur" doc:name="UPDATE purchase">
+                    <db:sql><![CDATA[UPDATE course_purchases
+                                     SET transaction_id = :transactionId,
+                                         payment_method = :paymentMethod,
+                                         status         = 'PAYMENT_PENDING'
+                                     WHERE purchase_id = :purchaseId]]></db:sql>
+                    <db:input-parameters><![CDATA[#[{
+                        transactionId: vars.paymentResp.transactionId,
+                        paymentMethod: vars.req.paymentMethod,
+                        purchaseId:    vars.req.purchaseId
+                    }]]]></db:input-parameters>
+                </db:update>
+
+                <ee:transform doc:name="Build SOAP response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      pur#processPaymentResponse: {
+        pur#transactionId: vars.paymentResp.transactionId,
+        pur#status:        "PAYMENT_PENDING"
+      }
+    }
+  }
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </otherwise>
+        </choice>
+
+        <error-handler>
+            <on-error-continue type="HTTP:CONNECTIVITY, HTTP:INTERNAL_SERVER_ERROR">
+                <!-- Pago falló: SEGÚN ENUNCIADO sección 9.5 paso 4 → compensar -->
+                <db:update config-ref="MySQL_Config_pur" doc:name="UPDATE FAILED">
+                    <db:sql><![CDATA[UPDATE course_purchases SET status = 'FAILED'
+                                     WHERE purchase_id = :purchaseId]]></db:sql>
+                    <db:input-parameters><![CDATA[#[{purchaseId: vars.req.purchaseId}]]]></db:input-parameters>
+                </db:update>
+                <set-variable variableName="faultCode"    value="PAYMENT_FAILED"/>
+                <set-variable variableName="faultMessage" value="Payment processing failed at FinancialGateway"/>
+                <flow-ref name="sub-fault-business"/>
+            </on-error-continue>
+            <on-error-continue type="ANY">
+                <flow-ref name="sub-fault-internal"/>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <!--
+      ========================================================================
+      FLOW: confirmPayment
+      ------------------------------------------------------------------------
+      Pasos: SELECT compra → POST /payments/confirm → UPDATE status=PAYMENT_CONFIRMED
+      ========================================================================
+    -->
+    <flow name="flow-confirmPayment">
+
+        <ee:transform doc:name="Parse SOAP">
+            <ee:variables>
+                <ee:set-variable variableName="req"><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  purchaseId:    (payload.soap#Envelope.soap#Body.pur#confirmPaymentRequest.pur#purchaseId)    as String,
+  transactionId: (payload.soap#Envelope.soap#Body.pur#confirmPaymentRequest.pur#transactionId) as String
+}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <flow-ref name="sub-loadPurchase"/>
+
+        <choice>
+            <when expression="#[vars.purchase == null]">
+                <set-variable variableName="faultCode"    value="PURCHASE_NOT_FOUND"/>
+                <set-variable variableName="faultMessage"
+                              value='#["Purchase " ++ vars.req.purchaseId ++ " does not exist"]'/>
+                <flow-ref name="sub-fault-business"/>
+            </when>
+            <when expression='#[vars.purchase.status == "PAYMENT_CONFIRMED"]'>
+                <!-- Idempotente -->
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{ soap#Envelope: { soap#Body: { pur#confirmPaymentResponse: { pur#status: "PAYMENT_CONFIRMED" } } } }]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </when>
+            <otherwise>
+                <ee:transform doc:name="Build PaymentConfirmation">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  paymentId:     vars.req.purchaseId,
+  transactionId: vars.req.transactionId
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+
+                <http:request method="POST"
+                              path="${payment.basePath}/payments/confirm"
+                              config-ref="Payment_Config"
+                              doc:name="POST /payments/confirm">
+                    <http:headers><![CDATA[#[{"Content-Type": "application/json"}]]]></http:headers>
+                </http:request>
+
+                <db:update config-ref="MySQL_Config_pur" doc:name="UPDATE CONFIRMED">
+                    <db:sql><![CDATA[UPDATE course_purchases SET status = 'PAYMENT_CONFIRMED'
+                                     WHERE purchase_id = :purchaseId]]></db:sql>
+                    <db:input-parameters><![CDATA[#[{purchaseId: vars.req.purchaseId}]]]></db:input-parameters>
+                </db:update>
+
+                <ee:transform doc:name="Build SOAP response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{ soap#Envelope: { soap#Body: { pur#confirmPaymentResponse: { pur#status: "PAYMENT_CONFIRMED" } } } }]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </otherwise>
+        </choice>
+
+        <error-handler>
+            <on-error-continue type="ANY">
+                <flow-ref name="sub-fault-internal"/>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <!--
+      ========================================================================
+      FLOW: finalizePurchase
+      ------------------------------------------------------------------------
+      Crea la matrícula automáticamente (sección 9.5 paso 5 → EnrollmentService).
+      SEGÚN ENUNCIADO solo se puede finalizar si status == PAYMENT_CONFIRMED.
+      ========================================================================
+    -->
+    <flow name="flow-finalizePurchase">
+
+        <ee:transform doc:name="Parse SOAP">
+            <ee:variables>
+                <ee:set-variable variableName="req"><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  purchaseId: (payload.soap#Envelope.soap#Body.pur#finalizePurchaseRequest.pur#purchaseId) as String
+}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <flow-ref name="sub-loadPurchase"/>
+
+        <choice>
+            <when expression="#[vars.purchase == null]">
+                <set-variable variableName="faultCode"    value="PURCHASE_NOT_FOUND"/>
+                <set-variable variableName="faultMessage"
+                              value='#["Purchase " ++ vars.req.purchaseId ++ " does not exist"]'/>
+                <flow-ref name="sub-fault-business"/>
+            </when>
+            <when expression='#[vars.purchase.status == "COMPLETED" and vars.purchase.enrollment_id != null]'>
+                <!-- Idempotente: matrícula ya creada -->
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      pur#finalizePurchaseResponse: {
+        pur#enrollmentId: vars.purchase.enrollment_id,
+        pur#status:       "COMPLETED"
+      }
+    }
+  }
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </when>
+            <when expression='#[vars.purchase.status != "PAYMENT_CONFIRMED"]'>
+                <set-variable variableName="faultCode"    value="INVALID_STATE"/>
+                <set-variable variableName="faultMessage"
+                              value='#["Purchase is in state " ++ vars.purchase.status
+                                       ++ " — required: PAYMENT_CONFIRMED"]'/>
+                <flow-ref name="sub-fault-business"/>
+            </when>
+            <otherwise>
+                <ee:transform doc:name="Build EnrollmentRequest">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  userId:   vars.purchase.user_id,
+  courseId: vars.purchase.course_id
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+
+                <http:request method="POST"
+                              path="${enrollment.basePath}/enrollments"
+                              config-ref="Enrollment_Config"
+                              doc:name="POST /enrollments">
+                    <http:headers><![CDATA[#[{"Content-Type": "application/json"}]]]></http:headers>
+                </http:request>
+
+                <ee:transform doc:name="Capture enrollment response">
+                    <ee:variables>
+                        <ee:set-variable variableName="enrollmentResp"><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+
+                <db:update config-ref="MySQL_Config_pur" doc:name="UPDATE COMPLETED">
+                    <db:sql><![CDATA[UPDATE course_purchases
+                                     SET enrollment_id = :enrollmentId, status = 'COMPLETED'
+                                     WHERE purchase_id = :purchaseId]]></db:sql>
+                    <db:input-parameters><![CDATA[#[{
+                        enrollmentId: vars.enrollmentResp.enrollmentId,
+                        purchaseId:   vars.req.purchaseId
+                    }]]]></db:input-parameters>
+                </db:update>
+
+                <ee:transform doc:name="Build SOAP response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      pur#finalizePurchaseResponse: {
+        pur#enrollmentId: vars.enrollmentResp.enrollmentId,
+        pur#status:       "COMPLETED"
+      }
+    }
+  }
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </otherwise>
+        </choice>
+
+        <error-handler>
+            <on-error-continue type="HTTP:CONNECTIVITY">
+                <set-variable variableName="faultCode"    value="ENROLLMENT_UNAVAILABLE"/>
+                <set-variable variableName="faultMessage" value="EnrollmentService unreachable"/>
+                <flow-ref name="sub-fault-business"/>
+            </on-error-continue>
+            <on-error-continue type="ANY">
+                <flow-ref name="sub-fault-internal"/>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <!--
+      ========================================================================
+      FLOW: cancelPurchase  (compensación)
+      ------------------------------------------------------------------------
+      SEGÚN ENUNCIADO (sección 7.2.2 Saga + 9.5 paso 4):
+      Si la compra ya tenía pago iniciado, se invoca a la pasarela para
+      cancelarlo (transacción compensatoria). En cualquier caso se marca
+      la compra como CANCELLED.
+      ========================================================================
+    -->
+    <flow name="flow-cancelPurchase">
+
+        <ee:transform doc:name="Parse SOAP">
+            <ee:variables>
+                <ee:set-variable variableName="req"><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  purchaseId: (payload.soap#Envelope.soap#Body.pur#cancelPurchaseRequest.pur#purchaseId) as String,
+  reason:     (payload.soap#Envelope.soap#Body.pur#cancelPurchaseRequest.pur#reason)     as String
+}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <flow-ref name="sub-loadPurchase"/>
+
+        <choice>
+            <when expression="#[vars.purchase == null]">
+                <set-variable variableName="faultCode"    value="PURCHASE_NOT_FOUND"/>
+                <set-variable variableName="faultMessage"
+                              value='#["Purchase " ++ vars.req.purchaseId ++ " does not exist"]'/>
+                <flow-ref name="sub-fault-business"/>
+            </when>
+            <when expression='#[vars.purchase.status == "CANCELLED"]'>
+                <!-- Idempotente -->
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{ soap#Envelope: { soap#Body: { pur#cancelPurchaseResponse: { pur#status: "CANCELLED" } } } }]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </when>
+            <otherwise>
+                <!--
+                  Compensación: si había transactionId, llamamos a cancel en la pasarela.
+                  Si falla, lo loguemos pero seguimos cancelando localmente (sección 7.2.4).
+                -->
+                <choice>
+                    <when expression="#[vars.purchase.transaction_id != null]">
+                        <try doc:name="Compensate payment">
+                            <ee:transform doc:name="Build CancelRequest">
+                                <ee:message>
+                                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  paymentId: vars.req.purchaseId,
+  reason:    vars.req.reason
+}]]></ee:set-payload>
+                                </ee:message>
+                            </ee:transform>
+                            <http:request method="POST"
+                                          path="${payment.basePath}/payments/cancel"
+                                          config-ref="Payment_Config"
+                                          doc:name="POST /payments/cancel">
+                                <http:headers><![CDATA[#[{"Content-Type": "application/json"}]]]></http:headers>
+                            </http:request>
+                            <error-handler>
+                                <on-error-continue type="ANY">
+                                    <logger level="WARN"
+                                            message='#["[cancelPurchase] FinancialGateway cancel failed: "
+                                                      ++ (error.description default "")]'/>
+                                </on-error-continue>
+                            </error-handler>
+                        </try>
+                    </when>
+                </choice>
+
+                <db:update config-ref="MySQL_Config_pur" doc:name="UPDATE CANCELLED">
+                    <db:sql><![CDATA[UPDATE course_purchases
+                                     SET status = 'CANCELLED', cancel_reason = :reason
+                                     WHERE purchase_id = :purchaseId]]></db:sql>
+                    <db:input-parameters><![CDATA[#[{
+                        reason:     vars.req.reason,
+                        purchaseId: vars.req.purchaseId
+                    }]]]></db:input-parameters>
+                </db:update>
+
+                <ee:transform doc:name="Build SOAP response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{ soap#Envelope: { soap#Body: { pur#cancelPurchaseResponse: { pur#status: "CANCELLED" } } } }]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </otherwise>
+        </choice>
+
+        <error-handler>
+            <on-error-continue type="ANY">
+                <flow-ref name="sub-fault-internal"/>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <!--
+      ========================================================================
+      SUB-FLOW: cargar la compra desde MySQL en una variable
+      ========================================================================
+      Centraliza la lectura de la compra. Si no existe, vars.purchase queda null
+      y el flow caller decide qué hacer.
+    -->
+    <sub-flow name="sub-loadPurchase">
+        <db:select config-ref="MySQL_Config_pur" doc:name="SELECT purchase">
+            <db:sql><![CDATA[SELECT purchase_id, user_id, course_id, price, currency,
+                                    payment_method, transaction_id, enrollment_id,
+                                    status, cancel_reason
+                             FROM course_purchases
+                             WHERE purchase_id = :purchaseId
+                             LIMIT 1]]></db:sql>
+            <db:input-parameters><![CDATA[#[{ purchaseId: vars.req.purchaseId }]]]></db:input-parameters>
+        </db:select>
+        <set-variable variableName="purchase"
+                      value="#[if (sizeOf(payload) > 0) payload[0] else null]"
+                      doc:name="Set purchase"/>
+    </sub-flow>
+
+    <!--
+      ========================================================================
+      SUB-FLOWS: construcción de SOAP Faults (sección 6.4)
+      ========================================================================
+    -->
+    <sub-flow name="sub-fault-unsupported">
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      soap#Fault: {
+        faultcode:   "soap:Client",
+        faultstring: "Unsupported SOAP operation",
+        detail: {
+          pur#ServiceFault: {
+            pur#code:    "UNSUPPORTED_OPERATION",
+            pur#message: "SOAPAction not recognised: " ++ (vars.soapAction default "<missing>"),
+            pur#detail:  "Allowed: startPurchase | processPayment | confirmPayment | finalizePurchase | cancelPurchase"
+          }
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <set-variable variableName="faultPayload" value="#[payload]"/>
+    </sub-flow>
+
+    <sub-flow name="sub-fault-business">
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      soap#Fault: {
+        faultcode:   "soap:Client",
+        faultstring: vars.faultMessage default "Business error",
+        detail: {
+          pur#ServiceFault: {
+            pur#code:    vars.faultCode default "BUSINESS_ERROR",
+            pur#message: vars.faultMessage default "Business error",
+            pur#detail:  vars.faultDetail default ""
+          }
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <set-variable variableName="faultPayload" value="#[payload]"/>
+    </sub-flow>
+
+    <sub-flow name="sub-fault-internal">
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      soap#Fault: {
+        faultcode:   "soap:Server",
+        faultstring: "Internal Server Error",
+        detail: {
+          pur#ServiceFault: {
+            pur#code:    "INTERNAL_ERROR",
+            pur#message: (error.description default "Unexpected error"),
+            pur#detail:  (error.errorType.identifier default "")
+          }
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <set-variable variableName="faultPayload" value="#[payload]"/>
+    </sub-flow>
+
+</mule>

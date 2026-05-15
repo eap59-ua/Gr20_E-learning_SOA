@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SOAPAction: http://mtis.ua.es/elearning/purchase/processPayment
+  Sustituir <pur:purchaseId> por el devuelto en startPurchase.
+-->
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:pur="http://mtis.ua.es/elearning/purchase">
+   <soap:Header/>
+   <soap:Body>
+      <pur:processPaymentRequest>
+         <pur:purchaseId>REPLACE-WITH-PURCHASE-ID</pur:purchaseId>
+         <pur:paymentMethod>CARD</pur:paymentMethod>
+      </pur:processPaymentRequest>
+   </soap:Body>
+</soap:Envelope>

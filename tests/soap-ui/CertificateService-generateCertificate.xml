@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  EXAMPLE REQUEST: generateCertificate
+  ------------------------------------
+  Endpoint:    POST http://localhost:8081/services/CertificateService
+  SOAPAction:  http://mtis.ua.es/elearning/certificates/generateCertificate
+  Content-Type: text/xml; charset=UTF-8
+-->
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:cer="http://mtis.ua.es/elearning/certificates">
+   <soap:Header/>
+   <soap:Body>
+      <cer:generateCertificateRequest>
+         <cer:studentId>STU-0042</cer:studentId>
+         <cer:courseId>COURSE-MTIS-2026</cer:courseId>
+         <cer:finalGrade>8.50</cer:finalGrade>
+         <cer:completionDate>2026-05-14</cer:completionDate>
+         <cer:requestId>REQ-CERT-0042-MTIS-001</cer:requestId>
+      </cer:generateCertificateRequest>
+   </soap:Body>
+</soap:Envelope>

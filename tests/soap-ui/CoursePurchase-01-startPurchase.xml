@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  EXAMPLE REQUEST: startPurchase
+  ------------------------------
+  Endpoint:    POST http://localhost:8082/services/CoursePurchaseProcessService
+  SOAPAction:  http://mtis.ua.es/elearning/purchase/startPurchase
+  Content-Type: text/xml; charset=UTF-8
+
+  Devuelve un purchaseId que debe usarse en los pasos siguientes.
+-->
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:pur="http://mtis.ua.es/elearning/purchase">
+   <soap:Header/>
+   <soap:Body>
+      <pur:startPurchaseRequest>
+         <pur:userId>STU-0042</pur:userId>
+         <pur:courseId>COURSE-MTIS-2026</pur:courseId>
+         <pur:price>49.99</pur:price>
+         <pur:currency>EUR</pur:currency>
+      </pur:startPurchaseRequest>
+   </soap:Body>
+</soap:Envelope>

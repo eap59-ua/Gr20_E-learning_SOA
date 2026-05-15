@@ -1,0 +1,21 @@
+{
+  "minMuleVersion": "4.4.0",
+  "name": "certificate-service",
+  "requiredProduct": "MULE",
+  "classLoaderModelLoaderDescriptor": {
+    "id": "mule",
+    "attributes": {
+      "exportedResources": []
+    }
+  },
+  "bundleDescriptorLoader": {
+    "id": "mule",
+    "attributes": {}
+  },
+  "configs": [
+    "certificate-service.xml"
+  ],
+  "secureProperties": [
+    "db.password"
+  ]
+}

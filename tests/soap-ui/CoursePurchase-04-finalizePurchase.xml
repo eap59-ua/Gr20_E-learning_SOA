@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SOAPAction: http://mtis.ua.es/elearning/purchase/finalizePurchase
+  Requiere que la compra esté en estado PAYMENT_CONFIRMED.
+-->
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:pur="http://mtis.ua.es/elearning/purchase">
+   <soap:Header/>
+   <soap:Body>
+      <pur:finalizePurchaseRequest>
+         <pur:purchaseId>REPLACE-WITH-PURCHASE-ID</pur:purchaseId>
+      </pur:finalizePurchaseRequest>
+   </soap:Body>
+</soap:Envelope>

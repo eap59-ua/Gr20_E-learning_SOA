@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  EXAMPLE REQUEST: getCertificate
+  -------------------------------
+  Endpoint:    POST http://localhost:8081/services/CertificateService
+  SOAPAction:  http://mtis.ua.es/elearning/certificates/getCertificate
+  Content-Type: text/xml; charset=UTF-8
+
+  Devuelve el certificado de prueba insertado por schema.sql.
+-->
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:cer="http://mtis.ua.es/elearning/certificates">
+   <soap:Header/>
+   <soap:Body>
+      <cer:getCertificateRequest>
+         <cer:certificateId>11111111-1111-1111-1111-111111111111</cer:certificateId>
+      </cer:getCertificateRequest>
+   </soap:Body>
+</soap:Envelope>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SOAPAction: http://mtis.ua.es/elearning/purchase/confirmPayment
+-->
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:pur="http://mtis.ua.es/elearning/purchase">
+   <soap:Header/>
+   <soap:Body>
+      <pur:confirmPaymentRequest>
+         <pur:purchaseId>REPLACE-WITH-PURCHASE-ID</pur:purchaseId>
+         <pur:transactionId>REPLACE-WITH-TRANSACTION-ID</pur:transactionId>
+      </pur:confirmPaymentRequest>
+   </soap:Body>
+</soap:Envelope>

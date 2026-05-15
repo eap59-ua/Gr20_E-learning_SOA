@@ -1,0 +1,141 @@
+openapi: 3.0.3
+info:
+  title: EnrollmentService API
+  description: |
+    Servicio encargado del proceso de matriculación de usuarios en cursos.
+    Clasificación SOA: Task-centric Service.
+  version: 1.0.0
+  contact:
+    name: Grupo 20 – MTIS 2025-2026
+
+servers:
+  - url: https://elearning.ua.es/api/v1
+    description: Servidor de producción
+  - url: http://localhost:3000/api/v1
+    description: Servidor de desarrollo
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: enrollments
+    description: Operaciones de matriculación
+
+paths:
+
+  /enrollments:
+    post:
+      tags: [enrollments]
+      summary: Matricular usuario en curso
+      operationId: enrollUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnrollmentRequest'
+      responses:
+        '201':
+          description: Matrícula creada correctamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Enrollment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Usuario ya matriculado en el curso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /enrollments/{enrollmentId}:
+    get:
+      tags: [enrollments]
+      summary: Consultar matrícula
+      operationId: getEnrollment
+      parameters:
+        - name: enrollmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Matrícula encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Enrollment'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [enrollments]
+      summary: Cancelar matrícula
+      operationId: cancelEnrollment
+      parameters:
+        - name: enrollmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Matrícula cancelada correctamente
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+
+  schemas:
+
+    EnrollmentRequest:
+      type: object
+      properties:
+        userId:
+          type: string
+        courseId:
+          type: string
+      required: [userId, courseId]
+
+    Enrollment:
+      type: object
+      properties:
+        enrollmentId:
+          type: string
+        userId:
+          type: string
+        courseId:
+          type: string
+        enrollmentDate:
+          type: string
+          format: date-time
+        status:
+          type: string
+          example: ACTIVE
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+
+  responses:
+
+    BadRequest:
+      description: Petición incorrecta
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Recurso no encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

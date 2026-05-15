@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SOAPAction: http://mtis.ua.es/elearning/purchase/cancelPurchase
+  Si la compra ya tenía transactionId, el servicio llama a /payments/cancel
+  como transacción compensatoria (sección 7.2.2 Saga del enunciado).
+-->
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:pur="http://mtis.ua.es/elearning/purchase">
+   <soap:Header/>
+   <soap:Body>
+      <pur:cancelPurchaseRequest>
+         <pur:purchaseId>REPLACE-WITH-PURCHASE-ID</pur:purchaseId>
+         <pur:reason>USER_REQUEST</pur:reason>
+      </pur:cancelPurchaseRequest>
+   </soap:Body>
+</soap:Envelope>

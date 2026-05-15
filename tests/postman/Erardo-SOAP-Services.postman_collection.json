@@ -1,0 +1,171 @@
+{
+  "info": {
+    "name": "Grupo 20 - Erardo SOAP Services",
+    "description": "Colección Postman para los 2 servicios SOAP de Erardo: CertificateService y CoursePurchaseProcessService. Plataforma E-Learning MTIS 2025-2026.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "certHost",     "value": "http://localhost:8081" },
+    { "key": "purchaseHost", "value": "http://localhost:8082" },
+    { "key": "purchaseId",   "value": "" },
+    { "key": "transactionId","value": "" }
+  ],
+  "item": [
+    {
+      "name": "CertificateService",
+      "item": [
+        {
+          "name": "generateCertificate",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=UTF-8" },
+              { "key": "SOAPAction",   "value": "http://mtis.ua.es/elearning/certificates/generateCertificate" }
+            ],
+            "url": { "raw": "{{certHost}}/services/CertificateService" },
+            "body": {
+              "mode": "raw",
+              "raw": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:cer=\"http://mtis.ua.es/elearning/certificates\">\n  <soap:Body>\n    <cer:generateCertificateRequest>\n      <cer:studentId>STU-0042</cer:studentId>\n      <cer:courseId>COURSE-MTIS-2026</cer:courseId>\n      <cer:finalGrade>8.50</cer:finalGrade>\n      <cer:completionDate>2026-05-14</cer:completionDate>\n      <cer:requestId>REQ-CERT-{{$timestamp}}</cer:requestId>\n    </cer:generateCertificateRequest>\n  </soap:Body>\n</soap:Envelope>"
+            }
+          }
+        },
+        {
+          "name": "generateCertificate (NOT_ELIGIBLE)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=UTF-8" },
+              { "key": "SOAPAction",   "value": "http://mtis.ua.es/elearning/certificates/generateCertificate" }
+            ],
+            "url": { "raw": "{{certHost}}/services/CertificateService" },
+            "body": {
+              "mode": "raw",
+              "raw": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:cer=\"http://mtis.ua.es/elearning/certificates\">\n  <soap:Body>\n    <cer:generateCertificateRequest>\n      <cer:studentId>STU-FAIL</cer:studentId>\n      <cer:courseId>COURSE-MTIS-2026</cer:courseId>\n      <cer:finalGrade>3.20</cer:finalGrade>\n      <cer:completionDate>2026-05-14</cer:completionDate>\n    </cer:generateCertificateRequest>\n  </soap:Body>\n</soap:Envelope>"
+            }
+          }
+        },
+        {
+          "name": "getCertificate",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=UTF-8" },
+              { "key": "SOAPAction",   "value": "http://mtis.ua.es/elearning/certificates/getCertificate" }
+            ],
+            "url": { "raw": "{{certHost}}/services/CertificateService" },
+            "body": {
+              "mode": "raw",
+              "raw": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:cer=\"http://mtis.ua.es/elearning/certificates\">\n  <soap:Body>\n    <cer:getCertificateRequest>\n      <cer:certificateId>11111111-1111-1111-1111-111111111111</cer:certificateId>\n    </cer:getCertificateRequest>\n  </soap:Body>\n</soap:Envelope>"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CoursePurchaseProcessService",
+      "item": [
+        {
+          "name": "1. startPurchase",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=UTF-8" },
+              { "key": "SOAPAction",   "value": "http://mtis.ua.es/elearning/purchase/startPurchase" }
+            ],
+            "url": { "raw": "{{purchaseHost}}/services/CoursePurchaseProcessService" },
+            "body": {
+              "mode": "raw",
+              "raw": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:pur=\"http://mtis.ua.es/elearning/purchase\">\n  <soap:Body>\n    <pur:startPurchaseRequest>\n      <pur:userId>STU-0042</pur:userId>\n      <pur:courseId>COURSE-MTIS-2026</pur:courseId>\n      <pur:price>49.99</pur:price>\n      <pur:currency>EUR</pur:currency>\n    </pur:startPurchaseRequest>\n  </soap:Body>\n</soap:Envelope>"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const xml = pm.response.text();",
+                  "const match = xml.match(/<pur:purchaseId>([^<]+)<\\/pur:purchaseId>/);",
+                  "if (match) { pm.collectionVariables.set('purchaseId', match[1]); console.log('purchaseId=' + match[1]); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. processPayment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=UTF-8" },
+              { "key": "SOAPAction",   "value": "http://mtis.ua.es/elearning/purchase/processPayment" }
+            ],
+            "url": { "raw": "{{purchaseHost}}/services/CoursePurchaseProcessService" },
+            "body": {
+              "mode": "raw",
+              "raw": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:pur=\"http://mtis.ua.es/elearning/purchase\">\n  <soap:Body>\n    <pur:processPaymentRequest>\n      <pur:purchaseId>{{purchaseId}}</pur:purchaseId>\n      <pur:paymentMethod>CARD</pur:paymentMethod>\n    </pur:processPaymentRequest>\n  </soap:Body>\n</soap:Envelope>"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const xml = pm.response.text();",
+                  "const match = xml.match(/<pur:transactionId>([^<]+)<\\/pur:transactionId>/);",
+                  "if (match) { pm.collectionVariables.set('transactionId', match[1]); console.log('transactionId=' + match[1]); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. confirmPayment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=UTF-8" },
+              { "key": "SOAPAction",   "value": "http://mtis.ua.es/elearning/purchase/confirmPayment" }
+            ],
+            "url": { "raw": "{{purchaseHost}}/services/CoursePurchaseProcessService" },
+            "body": {
+              "mode": "raw",
+              "raw": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:pur=\"http://mtis.ua.es/elearning/purchase\">\n  <soap:Body>\n    <pur:confirmPaymentRequest>\n      <pur:purchaseId>{{purchaseId}}</pur:purchaseId>\n      <pur:transactionId>{{transactionId}}</pur:transactionId>\n    </pur:confirmPaymentRequest>\n  </soap:Body>\n</soap:Envelope>"
+            }
+          }
+        },
+        {
+          "name": "4. finalizePurchase",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=UTF-8" },
+              { "key": "SOAPAction",   "value": "http://mtis.ua.es/elearning/purchase/finalizePurchase" }
+            ],
+            "url": { "raw": "{{purchaseHost}}/services/CoursePurchaseProcessService" },
+            "body": {
+              "mode": "raw",
+              "raw": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:pur=\"http://mtis.ua.es/elearning/purchase\">\n  <soap:Body>\n    <pur:finalizePurchaseRequest>\n      <pur:purchaseId>{{purchaseId}}</pur:purchaseId>\n    </pur:finalizePurchaseRequest>\n  </soap:Body>\n</soap:Envelope>"
+            }
+          }
+        },
+        {
+          "name": "5. cancelPurchase",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=UTF-8" },
+              { "key": "SOAPAction",   "value": "http://mtis.ua.es/elearning/purchase/cancelPurchase" }
+            ],
+            "url": { "raw": "{{purchaseHost}}/services/CoursePurchaseProcessService" },
+            "body": {
+              "mode": "raw",
+              "raw": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:pur=\"http://mtis.ua.es/elearning/purchase\">\n  <soap:Body>\n    <pur:cancelPurchaseRequest>\n      <pur:purchaseId>{{purchaseId}}</pur:purchaseId>\n      <pur:reason>USER_REQUEST</pur:reason>\n    </pur:cancelPurchaseRequest>\n  </soap:Body>\n</soap:Envelope>"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

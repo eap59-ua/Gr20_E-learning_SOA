@@ -1,0 +1,152 @@
+openapi: 3.0.3
+info:
+  title: AcademicHistoryProcess API
+  description: |
+    Servicio de proceso encargado de la agregación de datos académicos.
+    Coordina la obtención de datos de perfil (UserService), catálogo (CourseService) 
+    y calificaciones (EvaluationService).
+    Clasificación SOA: Process Service (Thomas Erl).
+  version: 1.0.0
+
+servers:
+  - url: https://elearning.ua.es/api/v1
+    description: Servidor de producción
+
+tags:
+  - name: history
+    description: Orquestación del historial y progreso académico
+
+paths:
+  /academic-history/student/{studentId}:
+    get:
+      tags: [history]
+      summary: Consultar expediente académico consolidado
+      description: |
+        Realiza una orquestación síncrona para componer el expediente del alumno. 
+        Incluye validación de identidad y cálculo de estadísticas de progreso.
+      operationId: getStudentHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: studentId
+          in: path
+          required: true
+          description: UUID del estudiante
+          schema:
+            type: string
+            format: uuid
+        - name: detailLevel
+          in: query
+          required: false
+          description: Nivel de detalle de las evaluaciones
+          schema:
+            type: string
+            enum: [summary, full]
+            default: summary
+      responses:
+        '200':
+          description: Expediente generado correctamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentExpediente'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    StudentExpediente:
+      type: object
+      required: [student, academicSummary, overallStats, generatedAt]
+      properties:
+        student:
+          $ref: '#/components/schemas/UserSummary'
+        academicSummary:
+          type: array
+          description: Listado de cursos con progreso detallado
+          items:
+            $ref: '#/components/schemas/CourseProgressDetail'
+        overallStats:
+          $ref: '#/components/schemas/AcademicStats'
+        generatedAt:
+          type: string
+          format: date-time
+          example: "2026-03-17T10:00:00Z"
+
+    UserSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        fullName: { type: string, example: "Marcos Bentivegna" }
+        email: { type: string, format: email, example: "marcos@alu.ua.es" }
+        role: { type: string, example: "student" }
+
+    AcademicStats:
+      type: object
+      properties:
+        enrolledCourses: { type: integer, minimum: 0, example: 5 }
+        completedCourses: { type: integer, minimum: 0, example: 2 }
+        averageScore: { type: number, format: float, minimum: 0, maximum: 10, example: 8.75 }
+        totalCredits: { type: integer, example: 30 }
+
+    CourseProgressDetail:
+      type: object
+      properties:
+        courseId: { type: string, format: uuid }
+        courseTitle: { type: string, example: "Tecnologías de Integración" }
+        status:
+          type: string
+          enum: [enrolled, in_progress, completed, dropped]
+        progressPercentage: { type: integer, minimum: 0, maximum: 100, example: 85 }
+        lastAccess: { type: string, format: date-time }
+        evaluations:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvaluationSummary'
+
+    EvaluationSummary:
+      type: object
+      properties:
+        evaluationId: { type: string, format: uuid }
+        title: { type: string, example: "Examen Final" }
+        score: { type: number, format: float, example: 9.2 }
+        passed: { type: boolean, example: true }
+        date: { type: string, format: date-time }
+
+    Error:
+      type: object
+      required: [code, message, timestamp]
+      properties:
+        code: { type: integer, example: 404 }
+        message: { type: string, example: "Estudiante no encontrado" }
+        timestamp: { type: string, format: date-time }
+
+  responses:
+    Unauthorized:
+      description: No autenticado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Recurso no encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalError:
+      description: Error interno del servidor
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

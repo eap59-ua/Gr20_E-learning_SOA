@@ -1,0 +1,168 @@
+openapi: 3.0.3
+info:
+  title: FinancialGatewayService API
+  description: |
+    Servicio externo de pasarela de pagos utilizado por la plataforma
+    E-Learning para procesar transacciones financieras.
+    Clasificación SOA: External Utility Service.
+  version: 1.0.0
+  contact:
+    name: External Financial Provider
+
+servers:
+  - url: https://payment-gateway.example.com/api
+    description: Servidor externo de pagos
+
+tags:
+  - name: payments
+    description: Operaciones de procesamiento de pagos
+
+paths:
+
+  /payments/process:
+    post:
+      tags: [payments]
+      summary: Procesar pago
+      description: Inicia el procesamiento de un pago en el sistema externo.
+      operationId: processPayment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '200':
+          description: Pago procesado correctamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /payments/confirm:
+    post:
+      tags: [payments]
+      summary: Confirmar pago
+      description: Confirma una transacción previamente iniciada.
+      operationId: confirmPayment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentConfirmation'
+      responses:
+        '200':
+          description: Pago confirmado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /payments/cancel:
+    post:
+      tags: [payments]
+      summary: Cancelar pago
+      description: Cancela una transacción en curso o pendiente.
+      operationId: cancelPayment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentCancelRequest'
+      responses:
+        '200':
+          description: Pago cancelado correctamente
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+
+  schemas:
+
+    PaymentRequest:
+      type: object
+      properties:
+        paymentId:
+          type: string
+          example: "PAY-239482"
+        userId:
+          type: string
+        amount:
+          type: number
+          format: float
+        currency:
+          type: string
+          example: "EUR"
+        description:
+          type: string
+      required: [paymentId, userId, amount]
+
+    PaymentConfirmation:
+      type: object
+      properties:
+        paymentId:
+          type: string
+        transactionId:
+          type: string
+      required: [paymentId, transactionId]
+
+    PaymentCancelRequest:
+      type: object
+      properties:
+        paymentId:
+          type: string
+        reason:
+          type: string
+
+    PaymentResponse:
+      type: object
+      properties:
+        paymentId:
+          type: string
+        transactionId:
+          type: string
+        status:
+          type: string
+          example: "CONFIRMED"
+        timestamp:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+
+  responses:
+
+    BadRequest:
+      description: Petición incorrecta
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Recurso no encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    InternalError:
+      description: Error interno del sistema
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

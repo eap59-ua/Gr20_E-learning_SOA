@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Copia local del contrato. Solo se reescribe el endpoint para apuntar al
+  Mule runtime local (puerto 8082). El resto del contrato es idéntico al
+  definido en ContratosWSDL-OpenAPI/CoursePurchaseProcessService.wsdl.
+-->
+<wsdl:definitions
+    name="CoursePurchaseProcessService"
+    targetNamespace="http://mtis.ua.es/elearning/purchase"
+    xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+    xmlns:tns="http://mtis.ua.es/elearning/purchase">
+
+  <wsdl:types>
+    <xs:schema targetNamespace="http://mtis.ua.es/elearning/purchase" elementFormDefault="qualified">
+
+      <xs:complexType name="ServiceFaultType">
+        <xs:sequence>
+          <xs:element name="code" type="xs:string"/>
+          <xs:element name="message" type="xs:string"/>
+          <xs:element name="detail" type="xs:string" minOccurs="0"/>
+        </xs:sequence>
+      </xs:complexType>
+
+      <xs:element name="ServiceFault" type="tns:ServiceFaultType"/>
+
+      <xs:element name="startPurchaseRequest">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="userId" type="xs:string"/>
+            <xs:element name="courseId" type="xs:string"/>
+            <xs:element name="price" type="xs:decimal"/>
+            <xs:element name="currency" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+
+      <xs:element name="startPurchaseResponse">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="purchaseId" type="xs:string"/>
+            <xs:element name="status" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+
+      <xs:element name="processPaymentRequest">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="purchaseId" type="xs:string"/>
+            <xs:element name="paymentMethod" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+
+      <xs:element name="processPaymentResponse">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="transactionId" type="xs:string"/>
+            <xs:element name="status" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+
+      <xs:element name="confirmPaymentRequest">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="purchaseId" type="xs:string"/>
+            <xs:element name="transactionId" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+
+      <xs:element name="confirmPaymentResponse">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="status" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+
+      <xs:element name="finalizePurchaseRequest">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="purchaseId" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+
+      <xs:element name="finalizePurchaseResponse">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="enrollmentId" type="xs:string"/>
+            <xs:element name="status" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+
+      <xs:element name="cancelPurchaseRequest">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="purchaseId" type="xs:string"/>
+            <xs:element name="reason" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+
+      <xs:element name="cancelPurchaseResponse">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="status" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+
+    </xs:schema>
+  </wsdl:types>
+
+  <wsdl:message name="startPurchaseRequest">
+    <wsdl:part name="parameters" element="tns:startPurchaseRequest"/>
+  </wsdl:message>
+  <wsdl:message name="startPurchaseResponse">
+    <wsdl:part name="parameters" element="tns:startPurchaseResponse"/>
+  </wsdl:message>
+  <wsdl:message name="processPaymentRequest">
+    <wsdl:part name="parameters" element="tns:processPaymentRequest"/>
+  </wsdl:message>
+  <wsdl:message name="processPaymentResponse">
+    <wsdl:part name="parameters" element="tns:processPaymentResponse"/>
+  </wsdl:message>
+  <wsdl:message name="confirmPaymentRequest">
+    <wsdl:part name="parameters" element="tns:confirmPaymentRequest"/>
+  </wsdl:message>
+  <wsdl:message name="confirmPaymentResponse">
+    <wsdl:part name="parameters" element="tns:confirmPaymentResponse"/>
+  </wsdl:message>
+  <wsdl:message name="finalizePurchaseRequest">
+    <wsdl:part name="parameters" element="tns:finalizePurchaseRequest"/>
+  </wsdl:message>
+  <wsdl:message name="finalizePurchaseResponse">
+    <wsdl:part name="parameters" element="tns:finalizePurchaseResponse"/>
+  </wsdl:message>
+  <wsdl:message name="cancelPurchaseRequest">
+    <wsdl:part name="parameters" element="tns:cancelPurchaseRequest"/>
+  </wsdl:message>
+  <wsdl:message name="cancelPurchaseResponse">
+    <wsdl:part name="parameters" element="tns:cancelPurchaseResponse"/>
+  </wsdl:message>
+  <wsdl:message name="ServiceFaultMessage">
+    <wsdl:part name="fault" element="tns:ServiceFault"/>
+  </wsdl:message>
+
+  <wsdl:portType name="CoursePurchaseProcessPortType">
+    <wsdl:operation name="startPurchase">
+      <wsdl:input message="tns:startPurchaseRequest"/>
+      <wsdl:output message="tns:startPurchaseResponse"/>
+      <wsdl:fault name="ServiceFault" message="tns:ServiceFaultMessage"/>
+    </wsdl:operation>
+    <wsdl:operation name="processPayment">
+      <wsdl:input message="tns:processPaymentRequest"/>
+      <wsdl:output message="tns:processPaymentResponse"/>
+      <wsdl:fault name="ServiceFault" message="tns:ServiceFaultMessage"/>
+    </wsdl:operation>
+    <wsdl:operation name="confirmPayment">
+      <wsdl:input message="tns:confirmPaymentRequest"/>
+      <wsdl:output message="tns:confirmPaymentResponse"/>
+      <wsdl:fault name="ServiceFault" message="tns:ServiceFaultMessage"/>
+    </wsdl:operation>
+    <wsdl:operation name="finalizePurchase">
+      <wsdl:input message="tns:finalizePurchaseRequest"/>
+      <wsdl:output message="tns:finalizePurchaseResponse"/>
+      <wsdl:fault name="ServiceFault" message="tns:ServiceFaultMessage"/>
+    </wsdl:operation>
+    <wsdl:operation name="cancelPurchase">
+      <wsdl:input message="tns:cancelPurchaseRequest"/>
+      <wsdl:output message="tns:cancelPurchaseResponse"/>
+      <wsdl:fault name="ServiceFault" message="tns:ServiceFaultMessage"/>
+    </wsdl:operation>
+  </wsdl:portType>
+
+  <wsdl:binding name="CoursePurchaseProcessBinding" type="tns:CoursePurchaseProcessPortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="startPurchase">
+      <soap:operation soapAction="http://mtis.ua.es/elearning/purchase/startPurchase"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+      <wsdl:fault name="ServiceFault"><soap:fault name="ServiceFault" use="literal"/></wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="processPayment">
+      <soap:operation soapAction="http://mtis.ua.es/elearning/purchase/processPayment"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+      <wsdl:fault name="ServiceFault"><soap:fault name="ServiceFault" use="literal"/></wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="confirmPayment">
+      <soap:operation soapAction="http://mtis.ua.es/elearning/purchase/confirmPayment"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+      <wsdl:fault name="ServiceFault"><soap:fault name="ServiceFault" use="literal"/></wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="finalizePurchase">
+      <soap:operation soapAction="http://mtis.ua.es/elearning/purchase/finalizePurchase"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+      <wsdl:fault name="ServiceFault"><soap:fault name="ServiceFault" use="literal"/></wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="cancelPurchase">
+      <soap:operation soapAction="http://mtis.ua.es/elearning/purchase/cancelPurchase"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+      <wsdl:fault name="ServiceFault"><soap:fault name="ServiceFault" use="literal"/></wsdl:fault>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <wsdl:service name="CoursePurchaseProcessService">
+    <wsdl:port name="CoursePurchaseProcessPort" binding="tns:CoursePurchaseProcessBinding">
+      <soap:address location="http://localhost:8082/services/CoursePurchaseProcessService"/>
+    </wsdl:port>
+  </wsdl:service>
+
+</wsdl:definitions>

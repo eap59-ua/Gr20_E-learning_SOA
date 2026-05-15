@@ -1,0 +1,144 @@
+openapi: 3.0.3
+info:
+  title: EvaluationService API
+  description: |
+    Servicio encargado de gestionar evaluaciones, respuestas de estudiantes
+    y cálculo de notas.
+  version: 1.0.0
+
+servers:
+  - url: https://elearning.ua.es/api/v1
+  - url: http://localhost:3000/api/v1
+
+tags:
+  - name: evaluations
+
+paths:
+
+  /evaluations/{courseId}/questions:
+    get:
+      tags: [evaluations]
+      summary: Obtener preguntas
+      operationId: getQuestions
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lista de preguntas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionList'
+
+  /evaluations/answers:
+    post:
+      tags: [evaluations]
+      summary: Enviar respuestas
+      operationId: submitAnswers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnswerSubmission'
+      responses:
+        '200':
+          description: Respuestas registradas
+
+  /evaluations/calculate-grade:
+    post:
+      tags: [evaluations]
+      summary: Calcular nota
+      operationId: calculateGrade
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GradeRequest'
+      responses:
+        '200':
+          description: Nota calculada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Grade'
+
+  /evaluations/{enrollmentId}/grade:
+    get:
+      tags: [evaluations]
+      summary: Consultar nota
+      operationId: getGrade
+      parameters:
+        - name: enrollmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Nota obtenida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Grade'
+
+components:
+
+  schemas:
+
+    Question:
+      type: object
+      properties:
+        questionId:
+          type: string
+        text:
+          type: string
+        options:
+          type: array
+          items:
+            type: string
+
+    QuestionList:
+      type: object
+      properties:
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Question'
+
+    AnswerSubmission:
+      type: object
+      properties:
+        enrollmentId:
+          type: string
+        answers:
+          type: array
+          items:
+            type: object
+            properties:
+              questionId:
+                type: string
+              answer:
+                type: string
+
+    GradeRequest:
+      type: object
+      properties:
+        enrollmentId:
+          type: string
+
+    Grade:
+      type: object
+      properties:
+        enrollmentId:
+          type: string
+        score:
+          type: number
+          format: float
+        passed:
+          type: boolean
