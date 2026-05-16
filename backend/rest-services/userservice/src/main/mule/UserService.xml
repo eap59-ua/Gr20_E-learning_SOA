@@ -1,0 +1,644 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+      xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+
+    <!-- ==================== CONFIGURACIÓN GLOBAL ==================== -->
+
+    <!-- HTTP Listener -->
+    <http:listener-config name="UserService-httpListenerConfig">
+        <http:listener-connection host="0.0.0.0" port="8081" />
+    </http:listener-config>
+
+    <!-- APIKit -->
+    <apikit:config name="UserService-config" api="UserService.raml"
+                   outboundHeadersMapName="outboundHeaders"
+                   httpStatusVarName="httpStatus" />
+
+    <!-- Base de datos MySQL -->
+    <db:config name="Database_Config" doc:name="Database Config">
+        <db:my-sql-connection
+            host="localhost"
+            port="3306"
+            user="root"
+            password="root"
+            database="mtis" />
+    </db:config>
+
+    <!-- ==================== FLUJO PRINCIPAL ==================== -->
+
+    <flow name="UserService-main">
+        <http:listener config-ref="UserService-httpListenerConfig" path="/api/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:router config-ref="UserService-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:BAD_REQUEST">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "Bad request"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">400</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:METHOD_NOT_ALLOWED">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "Method not allowed"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">405</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:NOT_ACCEPTABLE">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "Not acceptable"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">406</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:UNSUPPORTED_MEDIA_TYPE">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "Unsupported media type"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">415</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:NOT_IMPLEMENTED">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "Not Implemented"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">501</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+
+    <!-- Consola APIKit -->
+    <flow name="UserService-console">
+        <http:listener config-ref="UserService-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="UserService-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+
+    <!-- ==================== SUBFLOW: VALIDAR WSKEY ==================== -->
+    <!-- Reutilizable desde cualquier flujo -->
+    <sub-flow name="validar-wskey">
+        <db:select doc:name="Verificar WSKey" config-ref="Database_Config">
+            <db:sql>SELECT id FROM restkey WHERE rest_key = :wskey</db:sql>
+            <db:input-parameters><![CDATA[#[{'wskey': attributes.headers.WSKey}]]]></db:input-parameters>
+        </db:select>
+        <choice doc:name="¿WSKey válida?">
+            <when expression="#[isEmpty(payload)]">
+                <ee:transform doc:name="WSKey inválida">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "WSKey inválida o no autorizada"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">403</ee:set-variable>
+                        <ee:set-variable variableName="wsKeyValida">false</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </when>
+            <otherwise>
+                <ee:transform doc:name="WSKey OK">
+                    <ee:variables>
+                        <ee:set-variable variableName="wsKeyValida">true</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </otherwise>
+        </choice>
+    </sub-flow>
+
+    <!-- ==================== GET /users ==================== -->
+    <flow name="get:\users:UserService-config">
+        <flow-ref name="validar-wskey" />
+        <choice doc:name="¿WSKey válida?">
+            <when expression="#[vars.wsKeyValida == false]">
+                <ee:transform doc:name="Respuesta WSKey inválida">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "WSKey inválida o no autorizada"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">403</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </when>
+            <otherwise>
+                <db:select doc:name="Listar usuarios" config-ref="Database_Config">
+                    <db:sql><![CDATA[SELECT id, name, email, role, active, created_at FROM users WHERE active = 1]]></db:sql>
+                </db:select>
+                <ee:transform doc:name="Formatear respuesta">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    ok: true,
+    message: "Usuarios obtenidos correctamente",
+    data: payload map (u) -> {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        active: u.active,
+        createdAt: u.created_at as String default ""
+    }
+}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">200</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </otherwise>
+        </choice>
+    </flow>
+
+    <!-- ==================== POST /users ==================== -->
+    <flow name="post:\users:application\json:UserService-config">
+        <!-- Guardar body ANTES de llamar al subflow (que sobreescribe el payload) -->
+        <ee:transform doc:name="Guardar body">
+            <ee:variables>
+                <ee:set-variable variableName="body"><![CDATA[%dw 2.0
+output application/java
+---
+{
+    name: payload.name,
+    email: payload.email,
+    password: payload.password,
+    role: payload.role default "student"
+}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+        <flow-ref name="validar-wskey" />
+        <choice doc:name="¿WSKey válida?">
+            <when expression="#[vars.wsKeyValida == false]">
+                <logger level="INFO" message="WSKey inválida en POST /users" />
+            </when>
+            <otherwise>
+                <!-- Verificar si el email ya existe -->
+                <db:select doc:name="Verificar email duplicado" config-ref="Database_Config">
+                    <db:sql>SELECT id FROM users WHERE email = :email</db:sql>
+                    <db:input-parameters><![CDATA[#[{'email': vars.body.email}]]]></db:input-parameters>
+                </db:select>
+                <choice doc:name="¿Email duplicado?">
+                    <when expression="#[!isEmpty(payload)]">
+                        <ee:transform doc:name="Email ya existe">
+                            <ee:message>
+                                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "El email ya está registrado en el sistema"}]]></ee:set-payload>
+                            </ee:message>
+                            <ee:variables>
+                                <ee:set-variable variableName="httpStatus">409</ee:set-variable>
+                            </ee:variables>
+                        </ee:transform>
+                    </when>
+                    <otherwise>
+                        <ee:transform doc:name="Generar UUID">
+                            <ee:variables>
+                                <ee:set-variable variableName="newId"><![CDATA[%dw 2.0
+output application/java
+---
+java!java::util::UUID::randomUUID() as String]]></ee:set-variable>
+                            </ee:variables>
+                        </ee:transform>
+                        <db:insert doc:name="Insertar usuario" config-ref="Database_Config">
+                            <db:sql>INSERT INTO users (id, name, email, password, role, active) VALUES (:id, :name, :email, :password, :role, true)</db:sql>
+                            <db:input-parameters><![CDATA[#[{
+                                'id': vars.newId,
+                                'name': vars.body.name,
+                                'email': vars.body.email,
+                                'password': vars.body.password,
+                                'role': vars.body.role default 'student'
+                            }]]]></db:input-parameters>
+                        </db:insert>
+                        <ee:transform doc:name="Respuesta creado">
+                            <ee:message>
+                                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    ok: true,
+    message: "Usuario creado correctamente",
+    data: {
+        id: vars.newId,
+        name: vars.body.name,
+        email: vars.body.email,
+        role: vars.body.role default "student",
+        active: true
+    }
+}]]></ee:set-payload>
+                            </ee:message>
+                            <ee:variables>
+                                <ee:set-variable variableName="httpStatus">201</ee:set-variable>
+                            </ee:variables>
+                        </ee:transform>
+                    </otherwise>
+                </choice>
+            </otherwise>
+        </choice>
+    </flow>
+
+    <!-- ==================== GET /users/{userId} ==================== -->
+    <flow name="get:\users\(userId):UserService-config">
+        <ee:transform doc:name="Capturar userId">
+            <ee:variables>
+                <ee:set-variable variableName="userId"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams.'userId']]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+        <flow-ref name="validar-wskey" />
+        <choice doc:name="¿WSKey válida?">
+            <when expression="#[vars.wsKeyValida == false]">
+                <logger level="INFO" message="WSKey inválida en GET /users/{userId}" />
+            </when>
+            <otherwise>
+                <db:select doc:name="Buscar usuario por ID" config-ref="Database_Config">
+                    <db:sql>SELECT id, name, email, role, active, created_at FROM users WHERE id = :id</db:sql>
+                    <db:input-parameters><![CDATA[#[{'id': vars.userId}]]]></db:input-parameters>
+                </db:select>
+                <choice doc:name="¿Existe el usuario?">
+                    <when expression="#[isEmpty(payload)]">
+                        <ee:transform doc:name="Usuario no encontrado">
+                            <ee:message>
+                                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "Usuario no encontrado"}]]></ee:set-payload>
+                            </ee:message>
+                            <ee:variables>
+                                <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                            </ee:variables>
+                        </ee:transform>
+                    </when>
+                    <otherwise>
+                        <ee:transform doc:name="Formatear usuario">
+                            <ee:message>
+                                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    ok: true,
+    message: "Usuario encontrado",
+    data: {
+        id: payload[0].id,
+        name: payload[0].name,
+        email: payload[0].email,
+        role: payload[0].role,
+        active: payload[0].active,
+        createdAt: payload[0].created_at
+    }
+}]]></ee:set-payload>
+                            </ee:message>
+                            <ee:variables>
+                                <ee:set-variable variableName="httpStatus">200</ee:set-variable>
+                            </ee:variables>
+                        </ee:transform>
+                    </otherwise>
+                </choice>
+            </otherwise>
+        </choice>
+    </flow>
+
+    <!-- ==================== PUT /users/{userId} ==================== -->
+    <flow name="put:\users\(userId):application\json:UserService-config">
+        <!-- Guardar userId y body ANTES del subflow -->
+        <ee:transform doc:name="Capturar userId y body">
+            <ee:variables>
+                <ee:set-variable variableName="userId"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams.'userId']]></ee:set-variable>
+                <ee:set-variable variableName="body"><![CDATA[%dw 2.0
+output application/java
+---
+{
+    name: payload.name default null,
+    email: payload.email default null,
+    role: payload.role default null,
+    active: if (payload.active == true) 1 else if (payload.active == false) 0 else null
+}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+        <flow-ref name="validar-wskey" />
+        <choice doc:name="¿WSKey válida?">
+            <when expression="#[vars.wsKeyValida == false]">
+                <ee:transform doc:name="WSKey inválida PUT">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "WSKey inválida o no autorizada"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">403</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </when>
+            <otherwise>
+                <!-- Verificar que el usuario existe -->
+                <db:select doc:name="Verificar usuario existe" config-ref="Database_Config">
+                    <db:sql>SELECT id FROM users WHERE id = :id</db:sql>
+                    <db:input-parameters><![CDATA[#[{'id': vars.userId}]]]></db:input-parameters>
+                </db:select>
+                <choice doc:name="¿Existe el usuario?">
+                    <when expression="#[isEmpty(payload)]">
+                        <ee:transform doc:name="Usuario no encontrado">
+                            <ee:message>
+                                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "Usuario no encontrado"}]]></ee:set-payload>
+                            </ee:message>
+                            <ee:variables>
+                                <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                            </ee:variables>
+                        </ee:transform>
+                    </when>
+                    <otherwise>
+                        <db:update doc:name="Actualizar usuario" config-ref="Database_Config">
+                            <db:sql><![CDATA[UPDATE users SET
+                                name = :name,
+                                email = :email,
+                                role = :role,
+                                active = :active
+                                WHERE id = :id]]></db:sql>
+                            <db:input-parameters><![CDATA[#[{
+                                'id': vars.userId,
+                                'name': vars.body.name,
+                                'email': vars.body.email,
+                                'role': vars.body.role,
+                                'active': vars.body.active
+                            }]]]></db:input-parameters>
+                        </db:update>
+                        <!-- Recuperar usuario actualizado -->
+                        <db:select doc:name="Recuperar usuario actualizado" config-ref="Database_Config">
+                            <db:sql>SELECT id, name, email, role, active, created_at FROM users WHERE id = :id</db:sql>
+                            <db:input-parameters><![CDATA[#[{'id': vars.userId}]]]></db:input-parameters>
+                        </db:select>
+                        <ee:transform doc:name="Respuesta actualizado">
+                            <ee:message>
+                                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    ok: true,
+    message: "Usuario actualizado correctamente",
+    data: {
+        id: payload[0].id,
+        name: payload[0].name,
+        email: payload[0].email,
+        role: payload[0].role,
+        active: payload[0].active,
+        createdAt: payload[0].created_at
+    }
+}]]></ee:set-payload>
+                            </ee:message>
+                            <ee:variables>
+                                <ee:set-variable variableName="httpStatus">200</ee:set-variable>
+                            </ee:variables>
+                        </ee:transform>
+                    </otherwise>
+                </choice>
+            </otherwise>
+        </choice>
+    </flow>
+
+    <!-- ==================== DELETE /users/{userId} ==================== -->
+    <flow name="delete:\users\(userId):UserService-config">
+        <ee:transform doc:name="Capturar userId">
+            <ee:variables>
+                <ee:set-variable variableName="userId"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams.'userId']]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+        <flow-ref name="validar-wskey" />
+        <choice doc:name="¿WSKey válida?">
+            <when expression="#[vars.wsKeyValida == false]">
+                <ee:transform doc:name="WSKey inválida DELETE">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "WSKey inválida o no autorizada"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">403</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </when>
+            <otherwise>
+                <!-- Verificar que el usuario existe -->
+                <db:select doc:name="Verificar usuario existe" config-ref="Database_Config">
+                    <db:sql>SELECT id FROM users WHERE id = :id</db:sql>
+                    <db:input-parameters><![CDATA[#[{'id': vars.userId}]]]></db:input-parameters>
+                </db:select>
+                <choice doc:name="¿Existe el usuario?">
+                    <when expression="#[isEmpty(payload)]">
+                        <ee:transform doc:name="Usuario no encontrado">
+                            <ee:message>
+                                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "Usuario no encontrado"}]]></ee:set-payload>
+                            </ee:message>
+                            <ee:variables>
+                                <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                            </ee:variables>
+                        </ee:transform>
+                    </when>
+                    <otherwise>
+                        <!-- Verificar matrículas activas -->
+                        <db:select doc:name="Verificar matrículas activas" config-ref="Database_Config">
+                            <db:sql>SELECT id FROM enrollments WHERE user_id = :id AND status = 'ACTIVE'</db:sql>
+                            <db:input-parameters><![CDATA[#[{'id': vars.userId}]]]></db:input-parameters>
+                        </db:select>
+                        <choice doc:name="¿Tiene matrículas activas?">
+                            <when expression="#[!isEmpty(payload)]">
+                                <ee:transform doc:name="No se puede eliminar">
+                                    <ee:message>
+                                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "No se puede eliminar el usuario: tiene matrículas activas"}]]></ee:set-payload>
+                                    </ee:message>
+                                    <ee:variables>
+                                        <ee:set-variable variableName="httpStatus">409</ee:set-variable>
+                                    </ee:variables>
+                                </ee:transform>
+                            </when>
+                            <otherwise>
+                                <!-- Baja lógica -->
+                                <db:update doc:name="Desactivar usuario" config-ref="Database_Config">
+                                    <db:sql><![CDATA[UPDATE users SET active = 0 WHERE id = :id]]></db:sql>
+                                    <db:input-parameters><![CDATA[#[{'id': vars.userId}]]]></db:input-parameters>
+                                </db:update>
+                                <ee:transform doc:name="Respuesta eliminado">
+                                    <ee:message>
+                                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: true, message: "Usuario eliminado correctamente"}]]></ee:set-payload>
+                                    </ee:message>
+                                    <ee:variables>
+                                        <ee:set-variable variableName="httpStatus">200</ee:set-variable>
+                                    </ee:variables>
+                                </ee:transform>
+                            </otherwise>
+                        </choice>
+                    </otherwise>
+                </choice>
+            </otherwise>
+        </choice>
+    </flow>
+
+    <!-- ==================== POST /users/login ==================== -->
+    <flow name="post:\users\login:application\json:UserService-config">
+        <ee:transform doc:name="Guardar body login">
+            <ee:variables>
+                <ee:set-variable variableName="body"><![CDATA[%dw 2.0
+output application/java
+---
+{
+    email: payload.email,
+    password: payload.password
+}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+        <db:select doc:name="Verificar credenciales" config-ref="Database_Config">
+            <db:sql>SELECT id, name, email, role, active FROM users WHERE email = :email AND password = :password AND active = true</db:sql>
+            <db:input-parameters><![CDATA[#[{
+                'email': vars.body.email,
+                'password': vars.body.password
+            }]]]></db:input-parameters>
+        </db:select>
+        <choice doc:name="¿Credenciales válidas?">
+            <when expression="#[isEmpty(payload)]">
+                <ee:transform doc:name="Credenciales incorrectas">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "Email o contraseña incorrectos"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">401</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </when>
+            <otherwise>
+                <ee:transform doc:name="Login correcto">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    ok: true,
+    message: "Autenticación correcta",
+    data: {
+        id: payload[0].id,
+        name: payload[0].name,
+        email: payload[0].email,
+        role: payload[0].role
+    }
+}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">200</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </otherwise>
+        </choice>
+    </flow>
+
+</mule>

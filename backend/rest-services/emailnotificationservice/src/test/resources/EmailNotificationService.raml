@@ -1,0 +1,124 @@
+#%RAML 1.0
+title: EmailNotificationService API
+version: v1
+baseUri: http://localhost:8082/api/v1
+mediaType: application/json
+
+types:
+
+  EmailRequest:
+    type: object
+    properties:
+      to:
+        type: string
+      subject:
+        type: string
+      body:
+        type: string
+
+  EnrollmentNotification:
+    type: object
+    properties:
+      userId:
+        type: string
+      courseId:
+        type: string
+      email:
+        type: string
+
+  CertificateNotification:
+    type: object
+    properties:
+      userId:
+        type: string
+      certificateId:
+        type: string
+      email:
+        type: string
+
+  NotificationResponse:
+    type: object
+    properties:
+      ok:
+        type: boolean
+      message:
+        type: string
+      timestamp:
+        type: string
+        required: false
+
+  Error:
+    type: object
+    properties:
+      ok:
+        type: boolean
+      message:
+        type: string
+
+/notifications:
+
+  /email:
+    post:
+      displayName: Enviar email genérico
+      description: Envía un email genérico al destinatario indicado.
+      body:
+        application/json:
+          type: EmailRequest
+      responses:
+        200:
+          description: Email enviado correctamente
+          body:
+            application/json:
+              type: NotificationResponse
+        400:
+          body:
+            application/json:
+              type: Error
+        500:
+          body:
+            application/json:
+              type: Error
+
+  /enrollment:
+    post:
+      displayName: Notificación de matrícula
+      description: Envía notificación de matrícula a un usuario.
+      body:
+        application/json:
+          type: EnrollmentNotification
+      responses:
+        200:
+          description: Notificación enviada correctamente
+          body:
+            application/json:
+              type: NotificationResponse
+        400:
+          body:
+            application/json:
+              type: Error
+        500:
+          body:
+            application/json:
+              type: Error
+
+  /certificate:
+    post:
+      displayName: Notificación de certificado
+      description: Envía notificación de emisión de certificado a un usuario.
+      body:
+        application/json:
+          type: CertificateNotification
+      responses:
+        200:
+          description: Notificación enviada correctamente
+          body:
+            application/json:
+              type: NotificationResponse
+        400:
+          body:
+            application/json:
+              type: Error
+        500:
+          body:
+            application/json:
+              type: Error
