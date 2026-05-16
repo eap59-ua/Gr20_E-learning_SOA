@@ -1,0 +1,257 @@
+#%RAML 1.0
+title: UserService API
+version: v1
+baseUri: http://localhost:8081/api/v1
+mediaType: application/json
+
+types:
+
+  User:
+    type: object
+    properties:
+      id:
+        type: string
+        required: false
+      name:
+        type: string
+      email:
+        type: string
+      role:
+        type: string
+        enum: [student, instructor, admin]
+      active:
+        type: boolean
+        required: false
+      createdAt:
+        type: string
+        required: false
+
+  UserCreate:
+    type: object
+    properties:
+      name:
+        type: string
+      email:
+        type: string
+      password:
+        type: string
+      role:
+        type: string
+        enum: [student, instructor]
+        required: false
+
+  UserUpdate:
+    type: object
+    properties:
+      name:
+        type: string
+        required: false
+      email:
+        type: string
+        required: false
+      role:
+        type: string
+        enum: [student, instructor, admin]
+        required: false
+      active:
+        type: boolean
+        required: false
+
+  LoginRequest:
+    type: object
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+
+  LoginResponse:
+    type: object
+    properties:
+      token:
+        type: string
+        required: false
+      expiresIn:
+        type: integer
+        required: false
+      user:
+        type: User
+        required: false
+
+  Error:
+    type: object
+    properties:
+      ok:
+        type: boolean
+      message:
+        type: string
+
+traits:
+  wskey-secured:
+    headers:
+      WSKey:
+        description: Clave obligatoria para autorizar el método
+        type: string
+        required: true
+    responses:
+      403:
+        description: WSKey inválida o no autorizada
+        body:
+          application/json:
+            type: Error
+
+/users:
+  get:
+    is: [wskey-secured]
+    displayName: Listar usuarios
+    description: Devuelve la lista de todos los usuarios activos.
+    queryParameters:
+      role:
+        type: string
+        enum: [student, instructor, admin]
+        required: false
+      page:
+        type: integer
+        required: false
+        default: 1
+      size:
+        type: integer
+        required: false
+        default: 20
+    responses:
+      200:
+        description: Lista de usuarios obtenida correctamente
+        body:
+          application/json:
+            type: array
+            items: User
+      500:
+        body:
+          application/json:
+            type: Error
+
+  post:
+    is: [wskey-secured]
+    displayName: Crear usuario
+    description: Registra un nuevo usuario en el sistema.
+    body:
+      application/json:
+        type: UserCreate
+    responses:
+      201:
+        description: Usuario creado correctamente
+        body:
+          application/json:
+            type: User
+      400:
+        body:
+          application/json:
+            type: Error
+      409:
+        description: El email ya está registrado
+        body:
+          application/json:
+            type: Error
+      500:
+        body:
+          application/json:
+            type: Error
+
+  /login:
+    post:
+      displayName: Login usuario
+      description: Valida credenciales y devuelve token.
+      body:
+        application/json:
+          type: LoginRequest
+      responses:
+        200:
+          description: Autenticación correcta
+          body:
+            application/json:
+              type: LoginResponse
+        400:
+          body:
+            application/json:
+              type: Error
+        401:
+          description: Credenciales incorrectas
+          body:
+            application/json:
+              type: Error
+        500:
+          body:
+            application/json:
+              type: Error
+
+  /{userId}:
+    uriParameters:
+      userId:
+        type: string
+        description: Identificador único del usuario
+
+    get:
+      is: [wskey-secured]
+      displayName: Obtener usuario por ID
+      responses:
+        200:
+          description: Usuario encontrado
+          body:
+            application/json:
+              type: User
+        404:
+          body:
+            application/json:
+              type: Error
+        500:
+          body:
+            application/json:
+              type: Error
+
+    put:
+      is: [wskey-secured]
+      displayName: Actualizar usuario
+      body:
+        application/json:
+          type: UserUpdate
+      responses:
+        200:
+          description: Usuario actualizado correctamente
+          body:
+            application/json:
+              type: User
+        400:
+          body:
+            application/json:
+              type: Error
+        404:
+          body:
+            application/json:
+              type: Error
+        500:
+          body:
+            application/json:
+              type: Error
+
+    delete:
+      is: [wskey-secured]
+      displayName: Eliminar usuario
+      responses:
+        200:
+          description: Usuario eliminado correctamente
+          body:
+            application/json:
+              type: Error
+        404:
+          body:
+            application/json:
+              type: Error
+        409:
+          description: El usuario tiene matrículas activas
+          body:
+            application/json:
+              type: Error
+        500:
+          body:
+            application/json:
+              type: Error
