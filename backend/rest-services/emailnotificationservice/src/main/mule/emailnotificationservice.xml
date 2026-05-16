@@ -18,7 +18,7 @@
     <!-- ==================== CONFIGURACIÓN GLOBAL ==================== -->
 
     <http:listener-config name="EmailNotificationService-httpListenerConfig">
-        <http:listener-connection host="0.0.0.0" port="8082" />
+        <http:listener-connection host="0.0.0.0" port="8085" />
     </http:listener-config>
 
     <apikit:config name="EmailNotificationService-config"
