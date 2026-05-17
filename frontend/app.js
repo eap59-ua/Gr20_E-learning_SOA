@@ -125,18 +125,34 @@ function renderCourses() {
         container.innerHTML = `<p class="col-span-full text-center text-slate-500 py-8">No hay cursos disponibles.</p>`;
         return;
     }
+    const emojiFor = (cat) => {
+        const c = (cat || "").toLowerCase();
+        if (c.includes("ingenier")) return "🧩";
+        if (c.includes("web")) return "🌐";
+        if (c.includes("cloud") || c.includes("sistema")) return "☁️";
+        if (c.includes("dato")) return "📊";
+        return "📚";
+    };
     container.innerHTML = state.courses.map(course => `
-        <div class="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md transition">
-            <div class="flex justify-between items-start mb-2">
-                <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">${escapeHtml(course.category || "—")}</span>
-                <span class="text-lg font-bold text-emerald-600">${course.price} ${course.currency || "EUR"}</span>
+        <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200">
+            <div class="bg-gradient-to-br from-indigo-500 to-violet-600 h-24 relative flex items-center justify-center">
+                <span class="text-5xl">${emojiFor(course.category)}</span>
+                <span class="absolute top-2 right-2 bg-white/95 text-emerald-700 font-bold text-sm px-2.5 py-0.5 rounded-full shadow">${course.price} ${course.currency || "EUR"}</span>
             </div>
-            <h3 class="font-bold text-lg mb-1">${escapeHtml(course.title)}</h3>
-            <p class="text-sm text-slate-500 mb-3">${escapeHtml(course.instructorName || "—")} · ${course.durationHours || "?"} h</p>
-            <button onclick="buyCourse('${escapeHtml(course.id)}', '${escapeHtml(course.title)}')"
-                    class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 rounded text-sm transition">
-                🛒 Comprar curso
-            </button>
+            <div class="p-5">
+                <span class="inline-block text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full mb-2">${escapeHtml(course.category || "General")}</span>
+                <h3 class="font-bold text-lg mb-1 leading-tight">${escapeHtml(course.title)}</h3>
+                <p class="text-xs text-slate-500 mb-1">${escapeHtml(course.description || "")}</p>
+                <p class="text-sm text-slate-600 mb-4">
+                    <span class="text-slate-400">👤</span> ${escapeHtml(course.instructorName || "—")}
+                    <span class="mx-1 text-slate-300">·</span>
+                    <span class="text-slate-400">⏱</span> ${course.durationHours || "?"} h
+                </p>
+                <button onclick="buyCourse('${escapeHtml(course.id)}', '${escapeHtml(course.title)}')"
+                        class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 rounded-lg text-sm transition shadow-sm hover:shadow">
+                    🛒 Comprar curso
+                </button>
+            </div>
         </div>
     `).join("");
 }
