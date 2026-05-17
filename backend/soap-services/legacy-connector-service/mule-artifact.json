@@ -1,0 +1,21 @@
+{
+  "minMuleVersion": "4.8.0",
+  "name": "legacy-connector-service",
+  "requiredProduct": "MULE",
+  "classLoaderModelLoaderDescriptor": {
+    "id": "mule",
+    "attributes": {
+      "exportedResources": []
+    }
+  },
+  "bundleDescriptorLoader": {
+    "id": "mule",
+    "attributes": {}
+  },
+  "configs": [
+    "LegacyConnectorService.xml"
+  ],
+  "secureProperties": [
+    "db.password"
+  ]
+}
