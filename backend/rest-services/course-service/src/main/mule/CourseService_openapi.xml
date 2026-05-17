@@ -1,0 +1,466 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce" xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc" xmlns:email="http://www.mulesoft.org/schema/mule/email" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd 
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd
+http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd">
+    <http:listener-config name="CourseService_openapi-httpListenerConfig">
+        <http:listener-connection host="0.0.0.0" port="8081" />
+    </http:listener-config>
+    <apikit:config name="CourseService_openapi-config" api="CourseService_openapi.raml" outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus" />
+    <db:config name="Database_Config" doc:name="Database Config" doc:id="8bfdb76f-5d5f-486e-a169-f3f6a497a977" >
+		<db:my-sql-connection host="localhost" port="3306" user="root" password="root" database="mtis" />
+	</db:config>
+	<wsc:config name="Web_Service_Consumer_Config" doc:name="Web Service Consumer Config" doc:id="4a89cc73-b9d2-4efa-8d16-10acd8622645" >
+		<wsc:connection wsdlLocation="http://localhost:8089/LegacyConnectorService/LegacyConnectorPort?wsdl" service="LegacyConnectorService" port="LegacyConnectorPort" address="http://localhost:8089/LegacyConnectorService/LegacyConnectorPort" />
+	</wsc:config>
+	<!-- ===================== MAIN ===================== -->
+<wsc:config name="Web_Service_Consumer_Config1" doc:name="Web Service Consumer Config" doc:id="4fc519b9-2a0b-4768-930c-5abb30e447a3" >
+		<wsc:connection wsdlLocation="http://localhost:8089/LegacyConnectorService/LegacyConnectorPort?wsdl" service="LegacyConnectorService" port="LegacyConnectorPort" address="http://localhost:8089/LegacyConnectorService/LegacyConnectorPort" />
+	</wsc:config>
+	<flow name="CourseService_openapi-main"> <http:listener config-ref="CourseService_openapi-httpListenerConfig" path="/api/*"> <http:response statusCode="#[vars.httpStatus default 200]"> <http:headers>#[vars.outboundHeaders default {}]</http:headers> </http:response> <http:error-response statusCode="#[vars.httpStatus default 500]"> <http:body>#[payload]</http:body> <http:headers>#[vars.outboundHeaders default {}]</http:headers> </http:error-response> </http:listener> <apikit:router config-ref="CourseService_openapi-config" /> <error-handler> <on-error-propagate type="APIKIT:BAD_REQUEST"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Bad request"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">400</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-propagate type="APIKIT:NOT_FOUND"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Resource not found"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">404</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-propagate type="APIKIT:METHOD_NOT_ALLOWED"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Method not allowed"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">405</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-propagate type="APIKIT:NOT_ACCEPTABLE"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Not acceptable"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">406</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-propagate type="APIKIT:UNSUPPORTED_MEDIA_TYPE"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Unsupported media type"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">415</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-propagate type="APIKIT:NOT_IMPLEMENTED"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Not Implemented"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">501</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="5f119ff9-4702-4568-b8c7-1b4f0e31553d" type="ANY:MULE" > <set-payload value="#[error.description]" doc:name="Set Payload" doc:id="575f7bed-acbf-4551-95ae-aec0af1c9f20" /> </on-error-continue> </error-handler> </flow> <flow name="CourseService_openapi-console"> <http:listener config-ref="CourseService_openapi-httpListenerConfig" path="/console/*"> <http:response statusCode="#[vars.httpStatus default 200]"> <http:headers>#[vars.outboundHeaders default {}]</http:headers> </http:response> <http:error-response statusCode="#[vars.httpStatus default 500]"> <http:body>#[payload]</http:body> <http:headers>#[vars.outboundHeaders default {}]</http:headers> </http:error-response> </http:listener> <apikit:console config-ref="CourseService_openapi-config" /> <error-handler> <on-error-propagate type="APIKIT:NOT_FOUND"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Resource not found"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">404</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> </error-handler> </flow>
+
+<!-- ===================== GET ALL ===================== -->
+<sub-flow name="rest_key">
+
+    <db:select config-ref="Database_Config">
+        <db:sql><![CDATA[
+            SELECT * FROM restkey WHERE rest_key = :rest_key;
+        ]]></db:sql>
+
+        <db:input-parameters><![CDATA[#[{
+            rest_key: vars.rest_key
+        }]]]></db:input-parameters>
+    </db:select>
+
+    <choice>
+        <when expression="#[isEmpty(payload)]">
+            <raise-error type="ANY:MULE" description="401 UNAUTHORIZED" />
+        </when>
+    </choice>
+
+</sub-flow>
+	<flow name="get:\courses:CourseService_openapi-config">
+
+    <set-variable variableName="rest_key" value="#[attributes.headers.rest_key]"/>
+
+    <flow-ref name="rest_key"/>
+
+    <set-variable variableName="active" value="#[attributes.queryParams.active default true]"/>
+    <set-variable variableName="page" value="#[attributes.queryParams.page default 1]"/>
+    <set-variable variableName="size" value="#[attributes.queryParams.size default 20]"/>
+    <set-variable variableName="category" value="#[attributes.queryParams.category]"/>
+    <set-variable variableName="instructorId" value="#[attributes.queryParams.instructorId]"/>
+
+    <db:select config-ref="Database_Config">
+        <db:sql><![CDATA[
+            SELECT * FROM courses;
+        ]]></db:sql>
+    </db:select>
+
+    <ee:transform>
+        <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: "200 OK",
+  data: payload,
+  filters: {
+    active: vars.active,
+    page: vars.page,
+    size: vars.size,
+    category: vars.category,
+    instructorId: vars.instructorId
+  }
+}]]></ee:set-payload>
+        </ee:message>
+    </ee:transform>
+
+</flow>
+
+<!-- ===================== GET BY ID ===================== -->
+	<flow name="get:\courses\(courseId):CourseService_openapi-config">
+
+    <!-- 🔥 TODO EN VARIABLES -->
+    <set-variable variableName="courseId" value="#[attributes.uriParams.courseId]"/>
+    <set-variable variableName="rest_key" value="#[attributes.headers.rest_key]"/>
+
+    <flow-ref name="rest_key"/>
+
+    <logger level="INFO"
+            message="#[{ courseId: vars.courseId }]"/>
+
+    <db:select config-ref="Database_Config">
+        <db:sql><![CDATA[
+            SELECT * FROM courses WHERE id = :id;
+        ]]></db:sql>
+
+        <db:input-parameters><![CDATA[#[{
+            id: vars.courseId
+        }]]]></db:input-parameters>
+    </db:select>
+
+    <choice>
+        <when expression="#[isEmpty(payload)]">
+            <raise-error type="ANY:MULE" description="404 - NOT FOUND"/>
+        </when>
+    </choice>
+
+    <ee:transform>
+        <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: "200 OK - CURSO ENCONTRADO",
+  curso: payload
+}]]></ee:set-payload>
+        </ee:message>
+    </ee:transform>
+
+</flow>
+
+<!-- ===================== DELETE ===================== -->
+	<flow name="delete:\courses\(courseId):CourseService_openapi-config">
+
+    <set-variable variableName="courseId" value="#[attributes.uriParams.courseId]"/>
+    <set-variable variableName="rest_key" value="#[attributes.headers.rest_key]"/>
+
+    <flow-ref name="rest_key"/>
+
+    <db:delete config-ref="Database_Config">
+        <db:sql><![CDATA[
+            DELETE FROM courses WHERE id = :id;
+        ]]></db:sql>
+
+        <db:input-parameters><![CDATA[#[{
+            id: vars.courseId
+        }]]]></db:input-parameters>
+    </db:delete>
+
+    <choice>
+        <when expression="#[payload == 0]">
+            <raise-error type="ANY:MULE" description="404 - NOT FOUND"/>
+        </when>
+    </choice>
+
+    <ee:transform>
+        <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: "200 OK - CURSO ELIMINADO"
+}]]></ee:set-payload>
+        </ee:message>
+    </ee:transform>
+
+</flow>
+
+<!-- ===================== PUT ===================== -->
+	<flow name="put:\courses\(courseId):application\json:CourseService_openapi-config">
+
+    <set-variable variableName="courseId" value="#[attributes.uriParams.courseId]"/>
+    <set-variable variableName="rest_key" value="#[attributes.headers.rest_key]"/>
+
+    <!-- BODY COMPLETO EN VARIABLES -->
+    <set-variable variableName="title" value="#[payload.title]"/>
+    <set-variable variableName="description" value="#[payload.description]"/>
+    <set-variable variableName="category" value="#[payload.category]"/>
+    <set-variable variableName="durationHours" value="#[payload.durationHours]"/>
+    <set-variable variableName="price" value="#[payload.price]"/>
+    <set-variable variableName="active" value="#[payload.active]"/>
+    <set-variable variableName="legacyContentId" value="#[payload.legacyContentId]"/>
+
+    <flow-ref name="rest_key"/>
+
+    <db:update config-ref="Database_Config">
+        <db:sql><![CDATA[
+            UPDATE courses
+            SET title = :title,
+                description = :description,
+                category = :category,
+                duration_hours = :duration_hours,
+                price = :price,
+                active = :active,
+                external_content_id = :legacy_content_id,
+                updated_at = NOW()
+            WHERE id = :id
+        ]]></db:sql>
+
+        <db:input-parameters><![CDATA[#[{
+            id: vars.courseId,
+            title: vars.title,
+            description: vars.description,
+            category: vars.category,
+            duration_hours: vars.durationHours,
+            price: vars.price,
+            active: vars.active,
+            legacy_content_id: vars.legacyContentId
+        }]]]></db:input-parameters>
+    </db:update>
+
+    <ee:transform>
+        <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: "200 OK - CURSO ACTUALIZADO"
+}]]></ee:set-payload>
+        </ee:message>
+    </ee:transform>
+
+</flow>
+	<flow name="post:\courses:application\json:CourseService_openapi-config">
+
+    <!-- HEADERS -->
+    <set-variable variableName="rest_key" value="#[attributes.headers.rest_key]"/>
+
+    <!-- BODY → VARIABLES -->
+    <set-variable variableName="courseId" value="#[uuid()]"/>
+    <set-variable variableName="title" value="#[payload.title]"/>
+    <set-variable variableName="description" value="#[payload.description]"/>
+    <set-variable variableName="category" value="#[payload.category]"/>
+    <set-variable variableName="durationHours" value="#[payload.durationHours]"/>
+    <set-variable variableName="price" value="#[payload.price]"/>
+    <set-variable variableName="currency" value="#[payload.currency default 'EUR']"/>
+    <set-variable variableName="legacyContentId" value="#[payload.legacyContentId]"/>
+
+    <!-- VALIDACIÓN REST KEY -->
+    <set-variable value="#[payload.instructorId]" doc:name="Set Variable" doc:id="da8ae6f3-9369-4a54-ac9e-361ad1a15a19" variableName="instructor_id"/>
+		<set-variable value="#[payload.instructorName]" doc:name="Set Variable" doc:id="7c6bb1fc-a8c8-4e22-8ff6-c7f0c2202ce2" variableName="instructor_name"/>
+		<flow-ref name="rest_key"/>
+
+    <!-- INSERT -->
+    <db:insert config-ref="Database_Config">
+        <db:sql><![CDATA[
+            INSERT INTO courses (
+                id,
+                title,
+                description,
+                instructor_id,
+                instructor_name,
+                category,
+                duration_hours,
+                price,
+                currency,
+                active,
+                created_at,
+                external_content_id
+            )
+            VALUES (
+                :id,
+                :title,
+                :description,
+                :instructorId,
+                :instructorName,
+                :category,
+                :durationHours,
+                :price,
+                :currency,
+                :active,
+                NOW(),
+                :externalContentId
+            )
+        ]]></db:sql>
+
+        <db:input-parameters><![CDATA[#[{
+            id: vars.courseId,
+            title: vars.title,
+            description: vars.description,
+            instructorId: vars.instructor_id,
+            instructorName: vars.instructor_name,
+            category: vars.category,
+            durationHours: vars.durationHours,
+            price: vars.price,
+            currency: vars.currency,
+            active: true,
+            externalContentId: vars.legacyContentId
+        }]]]></db:input-parameters>
+    </db:insert>
+
+    <!-- RESPONSE -->
+    <ee:transform>
+        <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: "201 OK - CURSO CREADO",
+    id: vars.courseId
+}]]></ee:set-payload>
+        </ee:message>
+    </ee:transform>
+
+</flow>
+	<flow name="post:\courses\sync:application\json:CourseService_openapi-config">
+
+    <!-- HEADERS -->
+
+    <!-- QUERY PARAMS -->
+
+    <!-- VALIDACIÓN REST KEY -->
+    <set-variable value="#[attributes.headers.rest_key]" doc:name="Set Variable" doc:id="3cf5957a-b8ca-41f6-b295-330f1b98ee93" variableName="rest_key"/>
+		<set-variable value="#[payload.sourceSystem]" doc:name="Set Variable" doc:id="2d689ae5-7c30-4c71-8e24-72e19ceafa9b" variableName="source"/>
+		<set-variable value="#[payload.catalogId]" doc:name="Set Variable" doc:id="886f4ef4-1e43-4953-98e3-d0129e34bc55" variableName="catalog"/>
+		<set-variable value="#[payload.modifiedSince]" doc:name="Set Variable" doc:id="c1dca22c-f003-470e-a3e8-2dab6a8c9481" variableName="date"/>
+		<flow-ref name="rest_key"/>
+
+    <!-- REQUEST SOAP -->
+    <ee:transform>
+        <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns ns0 http://mtis.ua.es/elearning/legacy
+---
+{
+  ns0#getExternalContentsRequest: {
+    sourceSystem: vars.source,
+    catalogId: vars.catalog default null,
+    modifiedSince: vars.date default null
+  }
+}]]></ee:set-payload>
+        </ee:message>
+    </ee:transform>
+		<wsc:consume config-ref="Web_Service_Consumer_Config1"
+                 operation="getExternalContents"/>
+
+    <!-- PROCESS RESPONSE -->
+    <logger level="INFO" doc:name="Logger" doc:id="b3397c0a-d989-483a-ac0f-234a341ae9a0" message="#[payload]"/>
+		<ee:transform doc:name="Transform Message" doc:id="af6eb2f3-bd41-4716-a2c3-2bd41ae0409c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+ns ns0 http://mtis.ua.es/elearning/legacy
+---
+payload.body.ns0#ObtenerContenidosExternosResponse.*ns0#contents map (item) -> {
+    externalContentId: item.ns0#externalContentId,
+    title: item.ns0#title,
+    description: item.ns0#description,
+    category: item.ns0#category,
+    lastModified: item.ns0#lastModified,
+    checksum: item.ns0#checksum
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+
+    <logger level="INFO" doc:name="Logger" doc:id="1665c6d3-f7a1-4ed1-a5d0-f08ffbaad49b" message="#[payload]"/>
+		<foreach collection="#[payload]">
+
+        <db:insert doc:name="Insert" doc:id="bf5cb1b0-e949-40f9-8895-d6a4c4884acb" config-ref="Database_Config">
+				<db:sql ><![CDATA[
+                INSERT INTO courses (
+                    id,
+                    title,
+                    description,
+                    instructor_id,
+                    instructor_name,
+                    category,
+                    duration_hours,
+                    price,
+                    currency,
+                    active,
+                    created_at,
+                    external_content_id,
+                    external_last_modified,
+                    external_checksum
+                )
+                VALUES (
+                    :id,
+                    :title,
+                    :description,
+                    :instructorId,
+                    :instructorName,
+                    :category,
+                    :durationHours,
+                    :price,
+                    :currency,
+                    :active,
+                    NOW(),
+                    :externalContentId,
+                    :externalLastModified,
+                    :externalChecksum
+                )
+                ON DUPLICATE KEY UPDATE
+                    title = VALUES(title),
+                    description = VALUES(description),
+                    instructor_id = VALUES(instructor_id),
+                    instructor_name = VALUES(instructor_name),
+                    category = VALUES(category),
+                    duration_hours = VALUES(duration_hours),
+                    price = VALUES(price),
+                    currency = VALUES(currency),
+                    active = VALUES(active),
+                    external_last_modified = VALUES(external_last_modified),
+                    external_checksum = VALUES(external_checksum)
+            ]]></db:sql>
+				<db:input-parameters ><![CDATA[#[{
+                id: uuid(),
+                title: payload.title,
+                description: payload.description,
+                instructorId: "uuid",
+                instructorName: "Legacy",
+                category: payload.category,
+                durationHours: payload.durationHours default 0,
+                price: 0,
+                currency: "EUR",
+                active: true,
+                externalContentId: payload.externalContentId,
+                externalLastModified: payload.lastModified,
+                externalChecksum: payload.checksum
+            }]]]></db:input-parameters>
+			</db:insert></foreach>
+
+    <!-- RESPONSE -->
+		<logger level="INFO" doc:name="Logger" doc:id="cadb786f-2e31-4464-a091-107727b65f9f" message="#[vars.catalog]"/>
+		<ee:transform doc:name="Transform Message" doc:id="f24ad9e4-93cf-49ec-8498-651c934ea8cf" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns ns0 http://mtis.ua.es/elearning/legacy
+---
+{
+  ns0#synchronizedContentsRequest: {
+    sourceSystem: vars.source,
+    catalogId: vars.catalog,
+    requestedBy: "E-learning",
+    requestId: uuid()
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<wsc:consume operation="synchronizeContents" doc:name="Consume" doc:id="d4a3fe0e-bc05-4f1e-935e-6dea8dd24089" config-ref="Web_Service_Consumer_Config1"/>
+		<ee:transform doc:name="Transform Message" doc:id="dd8999a8-078c-48d1-887f-40f6e6b469a1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+ns ns0 http://mtis.ua.es/elearning/legacy
+---
+{
+    syncId: payload.body.ns0#SincronizarDatosRepositorioResponse.ns0#syncId,
+    status: payload.body.ns0#SincronizarDatosRepositorioResponse.ns0#status,
+    processedItems: payload.body.ns0#SincronizarDatosRepositorioResponse.ns0#processedItems,
+    updatedItems: payload.body.ns0#SincronizarDatosRepositorioResponse.ns0#updatedItems,
+    failedItems: payload.body.ns0#SincronizarDatosRepositorioResponse.ns0#failedItems,
+    startedAt: payload.body.ns0#SincronizarDatosRepositorioResponse.ns0#startedAt,
+    finishedAt: payload.body.ns0#SincronizarDatosRepositorioResponse.ns0#finishedAt,
+    message: payload.body.ns0#SincronizarDatosRepositorioResponse.ns0#message
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform>
+        <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: "201 OK - SYNC COMPLETED",
+    sync: payload
+}]]></ee:set-payload>
+        </ee:message>
+    </ee:transform>
+
+</flow>
+</mule>
