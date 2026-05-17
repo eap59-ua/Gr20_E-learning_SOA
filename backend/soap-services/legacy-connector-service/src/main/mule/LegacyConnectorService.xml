@@ -98,7 +98,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
 
 
 
-	<flow name="ObtenerContenidosExternos:\soapkit-config" doc:name="ObtenerContenidosExternos">
+	<flow name="getExternalContents:\soapkit-config" doc:name="ObtenerContenidosExternos">
 
 		<logger level="INFO" doc:name="Logger" message="ObtenerContenidosExternos" />
 
@@ -242,7 +242,7 @@ fun toContent(row) = {
 
 
 
-	<flow name="SincronizarDatosRepositorio:\soapkit-config" doc:name="SincronizarDatosRepositorio">
+	<flow name="synchronizeContents:\soapkit-config" doc:name="SincronizarDatosRepositorio">
 
 		<logger level="INFO" doc:name="Logger" message="SincronizarDatosRepositorio" />
 
@@ -603,4 +603,3 @@ var row = payload[0]
 	</flow>
 
 </mule>
-
