@@ -1,0 +1,150 @@
+#%RAML 1.0
+title: Evaluation Service API
+description: Gestión de evaluaciones académicas (equivalente RAML 1.0 a ContratosWSDL-OpenAPI/EvaluationService.yml).
+version: 1.0.0
+mediaType: application/json
+protocols:
+  - HTTP
+baseUri: http://localhost:8084
+
+documentation:
+  - title: Notas
+    content: |
+      Contrato alineado con OpenAPI 3.0.3 en `ContratosWSDL-OpenAPI/EvaluationService.yml`.
+      Implementación Mule 4 con persistencia MySQL (tabla `evaluations`; ver `src/main/resources/database/schema.sql`).
+
+types:
+  EvaluationStatus:
+    type: string
+    enum: [DRAFT, SUBMITTED, APPROVED, REJECTED]
+  EvaluationSummary:
+    type: object
+    properties:
+      evaluationId:
+        type: string
+      studentId:
+        type: string
+      status: EvaluationStatus
+      courseCode:
+        type: string
+        required: false
+  Evaluation:
+    type: object
+    properties:
+      evaluationId:
+        type: string
+      studentId:
+        type: string
+      status: EvaluationStatus
+      courseCode:
+        type: string
+        required: false
+      score:
+        type: number
+        required: false
+      comments:
+        type: string
+        required: false
+      updatedAt:
+        type: datetime
+        required: false
+  EvaluationCreateRequest:
+    type: object
+    properties:
+      studentId:
+        type: string
+      courseCode:
+        type: string
+      comments:
+        type: string
+        required: false
+  EvaluationUpdateRequest:
+    type: object
+    properties:
+      status:
+        type: EvaluationStatus
+        required: false
+      score:
+        type: number
+        required: false
+      comments:
+        type: string
+        required: false
+  ErrorResponse:
+    type: object
+    properties:
+      code:
+        type: string
+      message:
+        type: string
+      details?:
+        type: array
+        items:
+          type: string
+
+/evaluations:
+  get:
+    displayName: Listar evaluaciones
+    queryParameters:
+      studentId:
+        type: string
+        required: false
+      status:
+        type: EvaluationStatus
+        required: false
+    responses:
+      200:
+        body:
+          application/json:
+            type: EvaluationSummary[]
+  post:
+    displayName: Crear evaluación
+    body:
+      application/json:
+        type: EvaluationCreateRequest
+    responses:
+      201:
+        body:
+          application/json:
+            type: Evaluation
+      400:
+        body:
+          application/json:
+            type: ErrorResponse
+  /{evaluationId}:
+    uriParameters:
+      evaluationId:
+        type: string
+    get:
+      displayName: Obtener evaluación por identificador
+      responses:
+        200:
+          body:
+            application/json:
+              type: Evaluation
+        404:
+          body:
+            application/json:
+              type: ErrorResponse
+    put:
+      displayName: Actualizar evaluación
+      body:
+        application/json:
+          type: EvaluationUpdateRequest
+      responses:
+        200:
+          body:
+            application/json:
+              type: Evaluation
+        404:
+          body:
+            application/json:
+              type: ErrorResponse
+    delete:
+      displayName: Eliminar evaluación
+      responses:
+        204:
+        404:
+          body:
+            application/json:
+              type: ErrorResponse

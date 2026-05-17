@@ -1,8 +1,19 @@
 # AcademicHistoryProcess (REST) — Marcos
 
-Process Service REST para consulta del historial académico (sección 9.6 memoria fase 1).
+**Puerto:** `8093`
 
-Contrato: `contratos/rest/AcademicHistoryProcess.yaml`
-Puerto asignado: **3007**
+**Contrato:** `src/main/resources/api/academic-history-process.raml`  
+**OpenAPI grupo:** `contratos/rest/AcademicHistoryProcess.yaml`
 
-Compone datos de: UserService, EnrollmentService, EvaluationService y CertificateService.
+**Base de datos:** `elearning_academic_history` — script `src/main/resources/database/schema.sql`
+
+## Arranque
+
+```bash
+cd backend/rest-services/academic-history-process
+mvn clean package -DskipTests
+```
+
+## Panel web
+
+BFF en `backend/rest-services/web-bff` (:8094) — sección Academic en `frontend/`

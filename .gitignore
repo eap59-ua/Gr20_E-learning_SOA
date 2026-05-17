@@ -60,6 +60,8 @@ data/
 *.pem
 *.key
 *-secret.properties
+integration-local.properties
+**/properties/integration-local.properties
 secrets/
 .credentials
 

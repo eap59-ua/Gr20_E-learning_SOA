@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+
+	<flow name="academic-history-process-main">
+		<http:listener config-ref="academic-http-listener-config" path="/*" doc:name="HTTP">
+			<http:response statusCode="#[vars.httpStatusAcademic default 200]">
+				<http:headers><![CDATA[#[output application/java --- {
+					"Access-Control-Allow-Origin": p("cors.allow.origin"),
+					"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+					"Access-Control-Allow-Headers": "Content-Type, Authorization"
+				}]]]></http:headers>
+			</http:response>
+		</http:listener>
+		<apikit:router config-ref="academic-history-process-config" doc:name="APIkit Router" />
+	</flow>
+
+	<flow name="get:\students\(studentId)\academic-history:academic-history-process-config" doc:name="GET historial">
+		<try doc:name="Try">
+			<set-variable variableName="academicStudentId" value="#[attributes.uriParams.studentId]" doc:name="studentId" />
+			<db:select config-ref="MTIS_Database_Config" doc:name="Select academic_records">
+				<db:sql><![CDATA[SELECT term, course_code, course_name, grade, credits
+FROM academic_records
+WHERE student_id = :studentId
+ORDER BY term, course_code]]></db:sql>
+				<db:input-parameters><![CDATA[#[output application/java --- { studentId: vars.academicStudentId }]]]></db:input-parameters>
+			</db:select>
+			<set-payload value="#[%dw 2.0 output application/json --- { studentId: vars.academicStudentId, records: payload map ((r) -&gt; { term: r.term, courseCode: r.course_code, courseName: r.course_name, grade: r.grade, credits: r.credits }) }]" doc:name="AcademicHistory JSON" />
+			<error-handler>
+				<on-error-continue type="ANY" doc:name="Cualquier error">
+					<set-variable variableName="httpStatusAcademic" value="503" doc:name="503" />
+					<set-payload value="#[%dw 2.0 output application/json --- { code: 'ERR', service: 'academic', errorType: (if (error.errorType != null) ((error.errorType.namespace default '') ++ ':' ++ (error.errorType.identifier default '')) else 'N/A'), message: error.description default '', cause: (error.cause.message default '') as String, rootCause: (if (error.cause != null and error.cause.cause != null) (error.cause.cause.message default '') else '') as String }]" doc:name="JSON error detalle" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</flow>
+
+	<flow name="post:\students\(studentId)\academic-history\certificates:academic-history-process-config" doc:name="POST certificado">
+		<try doc:name="Try">
+			<set-variable variableName="newCertificateRequestId" value="#[%dw 2.0 output application/java --- uuid()]" doc:name="Nuevo UUID" />
+			<set-variable variableName="academicStudentId" value="#[attributes.uriParams.studentId]" doc:name="studentId path" />
+			<db:insert config-ref="MTIS_Database_Config" doc:name="Insert certificate_requests">
+				<db:sql><![CDATA[INSERT INTO certificate_requests (id, student_id, certificate_type, delivery_email, status)
+VALUES (:id, :studentId, :certificateType, :deliveryEmail, 'PENDING')]]></db:sql>
+				<db:input-parameters><![CDATA[#[output application/java --- using (b = payload default {}) {
+					id: vars.newCertificateRequestId,
+					studentId: vars.academicStudentId,
+					certificateType: b.certificateType,
+					deliveryEmail: b.deliveryEmail default null
+				}]]]></db:input-parameters>
+			</db:insert>
+			<set-variable variableName="httpStatusAcademic" value="201" doc:name="httpStatus 201" />
+			<set-payload value="#[%dw 2.0 output application/json --- { requestId: vars.newCertificateRequestId, status: 'PENDING' }]" doc:name="CertificateRequestResponse" />
+			<error-handler>
+				<on-error-continue type="ANY" doc:name="Cualquier error">
+					<set-variable variableName="httpStatusAcademic" value="503" doc:name="503" />
+					<set-payload value="#[%dw 2.0 output application/json --- { code: 'ERR', service: 'academic', errorType: (if (error.errorType != null) ((error.errorType.namespace default '') ++ ':' ++ (error.errorType.identifier default '')) else 'N/A'), message: error.description default '', cause: (error.cause.message default '') as String, rootCause: (if (error.cause != null and error.cause.cause != null) (error.cause.cause.message default '') else '') as String }]" doc:name="JSON error detalle" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</flow>
+
+</mule>

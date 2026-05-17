@@ -1,17 +1,8 @@
 {
-  "minMuleVersion": "4.4.0",
+  "minMuleVersion": "4.8.0",
+  "javaSpecificationVersions": ["17"],
   "name": "gr20-dev-bundle",
   "requiredProduct": "MULE",
-  "classLoaderModelLoaderDescriptor": {
-    "id": "mule",
-    "attributes": {
-      "exportedResources": []
-    }
-  },
-  "bundleDescriptorLoader": {
-    "id": "mule",
-    "attributes": {}
-  },
   "configs": [
     "certificate-service.xml",
     "course-purchase-service.xml",
@@ -20,6 +11,9 @@
     "mock-enrollment-service.xml",
     "mock-email-notification.xml",
     "orchestration-soap-purchase.xml",
-    "orchestration-rest-certificate.xml"
+    "orchestration-rest-certificate.xml",
+    "evaluation-service-bundle.xml",
+    "academic-history-process-bundle.xml",
+    "web-gateway-bundle.xml"
   ]
 }

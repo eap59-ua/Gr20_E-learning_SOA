@@ -2,13 +2,14 @@
 <!--
   Mule 4 Application: gr20-dev-bundle
   ────────────────────────────────────
-  Bundle de desarrollo: empaqueta los 2 servicios SOAP de Erardo
-  + los 4 mocks REST en UNA sola aplicación Mule.
+  Bundle de desarrollo: empaqueta los 2 servicios SOAP de Erardo,
+  los 4 mocks REST, Evaluation + Academic (Marcos) y el BFF web (:8094)
+  en UNA sola aplicación Mule.
 
   Razón de existir: Anypoint Studio (en algunas configuraciones)
   solo permite ejecutar 1 aplicación Mule a la vez. Este bundle
   evita esa limitación: con UN Run As → Mule Application arrancan
-  los 6 servicios simultáneamente, cada uno en su puerto.
+  todos los servicios de desarrollo simultáneamente, cada uno en su puerto.
 
   En producción y para la entrega final, cada servicio se despliega
   por separado desde su carpeta original (backend/soap-services/...
@@ -28,7 +29,7 @@
     <name>gr20-dev-bundle</name>
 
     <properties>
-        <app.runtime>4.4.0</app.runtime>
+        <app.runtime>4.8.1</app.runtime>
         <mule.maven.plugin.version>4.3.0</mule.maven.plugin.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
@@ -57,7 +58,13 @@
         <dependency>
             <groupId>org.mule.connectors</groupId>
             <artifactId>mule-http-connector</artifactId>
-            <version>1.7.3</version>
+            <version>1.10.3</version>
+            <classifier>mule-plugin</classifier>
+        </dependency>
+        <dependency>
+            <groupId>org.mule.modules</groupId>
+            <artifactId>mule-apikit-module</artifactId>
+            <version>1.11.7</version>
             <classifier>mule-plugin</classifier>
         </dependency>
         <dependency>

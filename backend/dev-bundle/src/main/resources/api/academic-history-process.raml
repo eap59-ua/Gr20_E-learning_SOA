@@ -1,0 +1,106 @@
+#%RAML 1.0
+title: Academic History Process API
+description: Historial académico y solicitud de certificados (equivalente RAML 1.0 a ContratosWSDL-OpenAPI/AcademicHistoryProcess.yaml).
+version: 1.0.0
+mediaType: application/json
+protocols:
+  - HTTP
+baseUri: http://localhost:8093
+
+documentation:
+  - title: Notas
+    content: |
+      Contrato alineado con OpenAPI 3.0.3 en `ContratosWSDL-OpenAPI/AcademicHistoryProcess.yaml`.
+      Implementación Mule 4 con persistencia MySQL (`academic_records`, `certificate_requests`; ver `src/main/resources/database/schema.sql`).
+
+types:
+  AcademicRecord:
+    type: object
+    properties:
+      term:
+        type: string
+        required: false
+      courseCode:
+        type: string
+        required: false
+      courseName:
+        type: string
+        required: false
+      grade:
+        type: string
+        required: false
+      credits:
+        type: integer
+        required: false
+  AcademicHistory:
+    type: object
+    properties:
+      studentId:
+        type: string
+      records:
+        type: array
+        items:
+          type: AcademicRecord
+  CertificateType:
+    type: string
+    enum: [FULL, PARTIAL]
+  CertificateRequest:
+    type: object
+    properties:
+      certificateType:
+        type: CertificateType
+      deliveryEmail:
+        type: string
+        required: false
+  CertificateRequestStatus:
+    type: string
+    enum: [PENDING, PROCESSING, COMPLETED]
+  CertificateRequestResponse:
+    type: object
+    properties:
+      requestId:
+        type: string
+      status:
+        type: CertificateRequestStatus
+  ErrorResponse:
+    type: object
+    properties:
+      code:
+        type: string
+      message:
+        type: string
+      details?:
+        type: array
+        items:
+          type: string
+
+/students/{studentId}/academic-history:
+  uriParameters:
+    studentId:
+      type: string
+  get:
+    displayName: Obtener historial académico del estudiante
+    responses:
+      200:
+        body:
+          application/json:
+            type: AcademicHistory
+      404:
+        body:
+          application/json:
+            type: ErrorResponse
+  /certificates:
+    post:
+      displayName: Solicitar emisión de certificado académico
+      body:
+        application/json:
+          type: CertificateRequest
+      responses:
+        201:
+          body:
+            application/json:
+              type: CertificateRequestResponse
+        400:
+          body:
+            application/json:
+              type: ErrorResponse

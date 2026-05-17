@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+
+	<flow name="evaluation-service-main">
+		<http:listener config-ref="evaluation-http-listener-config" path="/*" doc:name="HTTP">
+			<http:response statusCode="#[vars.httpStatus default 200]">
+				<http:headers><![CDATA[#[output application/java --- {
+					"Access-Control-Allow-Origin": p("cors.allow.origin"),
+					"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+					"Access-Control-Allow-Headers": "Content-Type, Authorization"
+				}]]]></http:headers>
+			</http:response>
+		</http:listener>
+		<apikit:router config-ref="evaluation-service-config" doc:name="APIkit Router" />
+	</flow>
+
+	<flow name="get:\evaluations:evaluation-service-config" doc:name="GET evaluations">
+		<try doc:name="Try">
+			<db:select config-ref="MTIS_Database_Config" doc:name="Select evaluations">
+				<db:sql><![CDATA[SELECT id, student_id, course_code, status
+FROM evaluations
+WHERE (:studentId = '' OR student_id = :studentId)
+  AND (:evalStatus = '' OR status = :evalStatus)
+ORDER BY updated_at DESC]]></db:sql>
+				<db:input-parameters><![CDATA[#[output application/java --- {
+					studentId: ((attributes.queryParams default {}).studentId default '') as String,
+					evalStatus: ((attributes.queryParams default {}).status default '') as String
+				}]]]></db:input-parameters>
+			</db:select>
+			<set-payload value="#[%dw 2.0 output application/json --- payload map ((r) -&gt; { evaluationId: r.id, studentId: r.student_id, status: r.status, courseCode: r.course_code })]" doc:name="To EvaluationSummary" />
+			<error-handler>
+				<on-error-continue type="ANY" doc:name="Cualquier error">
+					<set-variable variableName="httpStatus" value="503" doc:name="503" />
+					<set-payload value="#[%dw 2.0 output application/json --- { code: 'ERR', service: 'evaluation', errorType: (if (error.errorType != null) ((error.errorType.namespace default '') ++ ':' ++ (error.errorType.identifier default '')) else 'N/A'), message: error.description default '', cause: (error.cause.message default '') as String, rootCause: (if (error.cause != null and error.cause.cause != null) (error.cause.cause.message default '') else '') as String }]" doc:name="JSON error detalle" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</flow>
+
+	<flow name="post:\evaluations:evaluation-service-config" doc:name="POST evaluation">
+		<try doc:name="Try">
+			<set-variable variableName="newEvalId" value="#[%dw 2.0 output application/java --- uuid()]" doc:name="Nuevo UUID" />
+			<db:insert config-ref="MTIS_Database_Config" doc:name="Insert evaluation">
+				<db:sql><![CDATA[INSERT INTO evaluations (id, student_id, course_code, status, score, comments)
+VALUES (:id, :studentId, :courseCode, 'DRAFT', NULL, :comments)]]></db:sql>
+				<db:input-parameters><![CDATA[#[output application/java --- using (b = payload default {}) {
+					id: vars.newEvalId,
+					studentId: b.studentId,
+					courseCode: b.courseCode,
+					comments: b.comments default null
+				}]]]></db:input-parameters>
+			</db:insert>
+			<set-variable variableName="httpStatus" value="201" doc:name="httpStatus 201" />
+			<db:select config-ref="MTIS_Database_Config" doc:name="Select creada">
+				<db:sql><![CDATA[SELECT id, student_id, course_code, status, score, comments, updated_at
+FROM evaluations WHERE id = :id]]></db:sql>
+				<db:input-parameters><![CDATA[#[output application/java --- { id: vars.newEvalId }]]]></db:input-parameters>
+			</db:select>
+			<set-payload value="#[%dw 2.0 output application/json --- using (row = payload[0]) { evaluationId: row.id, studentId: row.student_id, courseCode: row.course_code, status: row.status, score: if (row.score == null) null else (row.score as Number), comments: row.comments default &quot;&quot;, updatedAt: if (row.updated_at == null) null else (row.updated_at as String) }]" doc:name="Map row to Evaluation" />
+			<error-handler>
+				<on-error-continue type="ANY" doc:name="Cualquier error">
+					<set-variable variableName="httpStatus" value="503" doc:name="503" />
+					<set-payload value="#[%dw 2.0 output application/json --- { code: 'ERR', service: 'evaluation', errorType: (if (error.errorType != null) ((error.errorType.namespace default '') ++ ':' ++ (error.errorType.identifier default '')) else 'N/A'), message: error.description default '', cause: (error.cause.message default '') as String, rootCause: (if (error.cause != null and error.cause.cause != null) (error.cause.cause.message default '') else '') as String }]" doc:name="JSON error detalle" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</flow>
+
+	<flow name="get:\evaluations\(evaluationId):evaluation-service-config" doc:name="GET evaluation by id">
+		<try doc:name="Try">
+			<db:select config-ref="MTIS_Database_Config" doc:name="Select by id">
+				<db:sql><![CDATA[SELECT id, student_id, course_code, status, score, comments, updated_at
+FROM evaluations WHERE id = :id]]></db:sql>
+				<db:input-parameters><![CDATA[#[output application/java --- { id: attributes.uriParams.evaluationId }]]]></db:input-parameters>
+			</db:select>
+			<choice doc:name="¿Existe?">
+				<when expression="#[sizeOf(payload) &gt; 0]">
+					<set-payload value="#[%dw 2.0 output application/json --- using (row = payload[0]) { evaluationId: row.id, studentId: row.student_id, courseCode: row.course_code, status: row.status, score: if (row.score == null) null else (row.score as Number), comments: row.comments default &quot;&quot;, updatedAt: if (row.updated_at == null) null else (row.updated_at as String) }]" doc:name="Evaluation JSON" />
+				</when>
+				<otherwise>
+					<set-variable variableName="httpStatus" value="404" doc:name="404" />
+					<set-payload value="#[%dw 2.0 output application/json --- { code: 'NOT_FOUND', message: 'Evaluación no encontrada' }]" doc:name="Error JSON" />
+				</otherwise>
+			</choice>
+			<error-handler>
+				<on-error-continue type="ANY" doc:name="Cualquier error">
+					<set-variable variableName="httpStatus" value="503" doc:name="503" />
+					<set-payload value="#[%dw 2.0 output application/json --- { code: 'ERR', service: 'evaluation', errorType: (if (error.errorType != null) ((error.errorType.namespace default '') ++ ':' ++ (error.errorType.identifier default '')) else 'N/A'), message: error.description default '', cause: (error.cause.message default '') as String, rootCause: (if (error.cause != null and error.cause.cause != null) (error.cause.cause.message default '') else '') as String }]" doc:name="JSON error detalle" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</flow>
+
+	<flow name="put:\evaluations\(evaluationId):evaluation-service-config" doc:name="PUT evaluation">
+		<try doc:name="Try">
+			<set-variable variableName="putBody" value="#[payload default {}]" doc:name="Guardar body PUT" />
+			<db:select config-ref="MTIS_Database_Config" doc:name="Select actual">
+				<db:sql><![CDATA[SELECT id, student_id, course_code, status, score, comments, updated_at
+FROM evaluations WHERE id = :id]]></db:sql>
+				<db:input-parameters><![CDATA[#[output application/java --- { id: attributes.uriParams.evaluationId }]]]></db:input-parameters>
+			</db:select>
+			<choice doc:name="¿Existe?">
+				<when expression="#[sizeOf(payload) &gt; 0]">
+					<set-variable variableName="evalRow" value="#[payload[0]]" doc:name="evalRow" />
+					<db:update config-ref="MTIS_Database_Config" doc:name="Update evaluation">
+						<db:sql><![CDATA[UPDATE evaluations SET
+status = :status,
+score = :score,
+comments = :comments,
+updated_at = CURRENT_TIMESTAMP
+WHERE id = :id]]></db:sql>
+						<db:input-parameters><![CDATA[#[output application/java --- using (cur = vars.evalRow, p = vars.putBody default {}) {
+	id: attributes.uriParams.evaluationId,
+	status: p.status default cur.status,
+	score: p.score default cur.score,
+	comments: p.comments default cur.comments
+}]]]></db:input-parameters>
+					</db:update>
+					<db:select config-ref="MTIS_Database_Config" doc:name="Select tras update">
+						<db:sql><![CDATA[SELECT id, student_id, course_code, status, score, comments, updated_at
+FROM evaluations WHERE id = :id]]></db:sql>
+						<db:input-parameters><![CDATA[#[output application/java --- { id: attributes.uriParams.evaluationId }]]]></db:input-parameters>
+					</db:select>
+					<set-payload value="#[%dw 2.0 output application/json --- using (row = payload[0]) { evaluationId: row.id, studentId: row.student_id, courseCode: row.course_code, status: row.status, score: if (row.score == null) null else (row.score as Number), comments: row.comments default &quot;&quot;, updatedAt: if (row.updated_at == null) null else (row.updated_at as String) }]" doc:name="Evaluation JSON" />
+				</when>
+				<otherwise>
+					<set-variable variableName="httpStatus" value="404" doc:name="404" />
+					<set-payload value="#[%dw 2.0 output application/json --- { code: 'NOT_FOUND', message: 'Evaluación no encontrada' }]" doc:name="Error JSON" />
+				</otherwise>
+			</choice>
+			<error-handler>
+				<on-error-continue type="ANY" doc:name="Cualquier error">
+					<set-variable variableName="httpStatus" value="503" doc:name="503" />
+					<set-payload value="#[%dw 2.0 output application/json --- { code: 'ERR', service: 'evaluation', errorType: (if (error.errorType != null) ((error.errorType.namespace default '') ++ ':' ++ (error.errorType.identifier default '')) else 'N/A'), message: error.description default '', cause: (error.cause.message default '') as String, rootCause: (if (error.cause != null and error.cause.cause != null) (error.cause.cause.message default '') else '') as String }]" doc:name="JSON error detalle" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</flow>
+
+	<flow name="delete:\evaluations\(evaluationId):evaluation-service-config" doc:name="DELETE evaluation">
+		<try doc:name="Try">
+			<db:select config-ref="MTIS_Database_Config" doc:name="Select by id">
+				<db:sql><![CDATA[SELECT id FROM evaluations WHERE id = :id]]></db:sql>
+				<db:input-parameters><![CDATA[#[output application/java --- { id: attributes.uriParams.evaluationId }]]]></db:input-parameters>
+			</db:select>
+			<choice doc:name="¿Existe?">
+				<when expression="#[sizeOf(payload) &gt; 0]">
+					<db:delete config-ref="MTIS_Database_Config" doc:name="Delete evaluation">
+						<db:sql><![CDATA[DELETE FROM evaluations WHERE id = :id]]></db:sql>
+						<db:input-parameters><![CDATA[#[output application/java --- { id: attributes.uriParams.evaluationId }]]]></db:input-parameters>
+					</db:delete>
+					<set-variable variableName="httpStatus" value="204" doc:name="204" />
+					<set-payload value="#[null]" doc:name="Sin cuerpo" />
+				</when>
+				<otherwise>
+					<set-variable variableName="httpStatus" value="404" doc:name="404" />
+					<set-payload value="#[%dw 2.0 output application/json --- { code: 'NOT_FOUND', message: 'Evaluación no encontrada' }]" doc:name="Error JSON" />
+				</otherwise>
+			</choice>
+			<error-handler>
+				<on-error-continue type="ANY" doc:name="Cualquier error">
+					<set-variable variableName="httpStatus" value="503" doc:name="503" />
+					<set-payload value="#[%dw 2.0 output application/json --- { code: 'ERR', service: 'evaluation', errorType: (if (error.errorType != null) ((error.errorType.namespace default '') ++ ':' ++ (error.errorType.identifier default '')) else 'N/A'), message: error.description default '', cause: (error.cause.message default '') as String, rootCause: (if (error.cause != null and error.cause.cause != null) (error.cause.cause.message default '') else '') as String }]" doc:name="JSON error detalle" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</flow>
+
+</mule>

@@ -1,0 +1,103 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Web BFF + SPA estático — dev-bundle. Puerto 8094. Upstreams hardcoded (mocks Erardo en 8082-8086).
+--><mule xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+	<http:listener-config name="web_ui_http_listener_config" doc:name="Web UI + BFF">
+		<http:listener-connection host="0.0.0.0" port="8094" />
+	</http:listener-config>
+
+	<http:request-config name="Web_BFF_Outbound_HTTP_Request_configuration" doc:name="BFF outbound (URL absoluta)" basePath="/">
+		<http:request-connection host="127.0.0.1" port="80" protocol="HTTP" />
+	</http:request-config>
+
+	<flow name="web-ui-main" doc:name="web-ui-main">
+		<http:listener config-ref="web_ui_http_listener_config" path="/*" doc:name="HTTP">
+			<http:response statusCode="#[vars.httpStatus default 200]">
+				<http:headers><![CDATA[#[output application/java --- {
+					"Access-Control-Allow-Origin": "*",
+					"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+					"Access-Control-Allow-Headers": "Content-Type, Authorization"
+				}]]]></http:headers>
+			</http:response>
+		</http:listener>
+		<choice doc:name="Enrutar">
+			<when expression="#[(upper(attributes.method default '') as String) == 'OPTIONS' and ((attributes.requestPath default '') startsWith '/api/proxy')]">
+				<set-variable variableName="httpStatus" value="204" doc:name="Preflight CORS" />
+				<set-payload value="#[null]" doc:name="Sin cuerpo" />
+			</when>
+			<when expression="#[(attributes.requestPath default '') startsWith '/api/proxy']">
+				<flow-ref name="web.bff.proxy.dispatch" doc:name="Proxy BFF" />
+			</when>
+			<otherwise>
+				<http:load-static-resource resourceBasePath="${app.home}/classes/public" attributes="attributes" defaultFile="index.html" doc:name="EstÃ¡ticos (SPA)" />
+			</otherwise>
+		</choice>
+	</flow>
+
+	<sub-flow name="web.bff.proxy.dispatch" doc:name="web.bff.proxy.dispatch">
+		<try doc:name="Try proxy">
+			<choice doc:name="Destino upstream">
+				<when expression="#[(attributes.requestPath default '') startsWith '/api/proxy/evaluation']">
+					<set-variable variableName="upstreamFullUrl" value="#[%dw 2.0 import * from dw::core::Strings output application/java var rp = attributes.requestPath default '' var rest = substringAfter(rp, '/api/proxy/evaluation') --- 'http://localhost:8084' ++ (if (isEmpty(rest)) '/' else rest)]" doc:name="URL Evaluation" />
+				</when>
+				<when expression="#[(attributes.requestPath default '') startsWith '/api/proxy/academic']">
+					<set-variable variableName="upstreamFullUrl" value="#[%dw 2.0 import * from dw::core::Strings output application/java var rp = attributes.requestPath default '' var rest = substringAfter(rp, '/api/proxy/academic') --- 'http://localhost:8093' ++ (if (isEmpty(rest)) '/' else rest)]" doc:name="URL Academic" />
+				</when>
+				<when expression="#[(attributes.requestPath default '') startsWith '/api/proxy/svc-user']">
+					<set-variable variableName="upstreamFullUrl" value="#[%dw 2.0 import * from dw::core::Strings output application/java var rp = attributes.requestPath default '' var rest = substringAfter(rp, '/api/proxy/svc-user') --- 'http://localhost:8081' ++ (if (isEmpty(rest)) '/' else rest)]" doc:name="URL User" />
+				</when>
+				<when expression="#[(attributes.requestPath default '') startsWith '/api/proxy/svc-course']">
+					<set-variable variableName="upstreamFullUrl" value="#[%dw 2.0 import * from dw::core::Strings output application/java var rp = attributes.requestPath default '' var rest = substringAfter(rp, '/api/proxy/svc-course') --- 'http://localhost:8082' ++ (if (isEmpty(rest)) '/' else rest)]" doc:name="URL Course" />
+				</when>
+				<when expression="#[(attributes.requestPath default '') startsWith '/api/proxy/svc-enrollment']">
+					<set-variable variableName="upstreamFullUrl" value="#[%dw 2.0 import * from dw::core::Strings output application/java var rp = attributes.requestPath default '' var rest = substringAfter(rp, '/api/proxy/svc-enrollment') --- 'http://localhost:8083' ++ (if (isEmpty(rest)) '/' else rest)]" doc:name="URL Enrollment" />
+				</when>
+				<when expression="#[(attributes.requestPath default '') startsWith '/api/proxy/svc-financial']">
+					<set-variable variableName="upstreamFullUrl" value="#[%dw 2.0 import * from dw::core::Strings output application/java var rp = attributes.requestPath default '' var rest = substringAfter(rp, '/api/proxy/svc-financial') --- 'http://localhost:8086' ++ (if (isEmpty(rest)) '/' else rest)]" doc:name="URL Financial" />
+				</when>
+				<when expression="#[(attributes.requestPath default '') startsWith '/api/proxy/svc-email']">
+					<set-variable variableName="upstreamFullUrl" value="#[%dw 2.0 import * from dw::core::Strings output application/java var rp = attributes.requestPath default '' var rest = substringAfter(rp, '/api/proxy/svc-email') --- 'http://localhost:8085' ++ (if (isEmpty(rest)) '/' else rest)]" doc:name="URL Email" />
+				</when>
+				<when expression="#[(attributes.requestPath default '') startsWith '/api/proxy/svc-esb-cert']">
+					<set-variable variableName="upstreamFullUrl" value="#[%dw 2.0 import * from dw::core::Strings output application/java var rp = attributes.requestPath default '' var rest = substringAfter(rp, '/api/proxy/svc-esb-cert') --- 'http://localhost:8092' ++ (if (isEmpty(rest)) '/' else rest)]" doc:name="URL ESB certificado" />
+				</when>
+				<when expression="#[(attributes.requestPath default '') startsWith '/api/proxy/svc-esb-purchase']">
+					<set-variable variableName="upstreamFullUrl" value="#[%dw 2.0 import * from dw::core::Strings output application/java var rp = attributes.requestPath default '' var rest = substringAfter(rp, '/api/proxy/svc-esb-purchase') --- 'http://localhost:8091' ++ (if (isEmpty(rest)) '/' else rest)]" doc:name="URL ESB compra" />
+				</when>
+				<otherwise>
+					<set-variable variableName="httpStatus" value="404" doc:name="404 prefijo desconocido" />
+					<set-payload value="#[%dw 2.0 output application/json --- { error: true, message: 'Prefijo /api/proxy no reconocido', path: attributes.requestPath }]" doc:name="JSON error" />
+				</otherwise>
+			</choice>
+			<choice doc:name="Si URL resuelta">
+				<when expression="#[vars.upstreamFullUrl != null]">
+					<http:request method="#[attributes.method]" url="#[vars.upstreamFullUrl]" config-ref="Web_BFF_Outbound_HTTP_Request_configuration" sendBodyMode="#[if ((upper(attributes.method default 'GET') as String) == 'GET') 'NEVER' else 'AUTO']" doc:name="Llamada upstream">
+						<http:headers><![CDATA[#[output application/java --- ({"Authorization": (attributes.headers["Authorization"] default attributes.headers["authorization"]) default ("Bearer " ++ "CHANGE_ME")}) ++ (if ((upper(attributes.method default "GET") as String) != "GET") {"Content-Type": (attributes.headers["Content-Type"] default attributes.headers["content-type"]) default "application/json"} else {})]]]></http:headers>
+						<http:query-params><![CDATA[#[attributes.queryParams default {}]]]></http:query-params>
+						<http:response-validator>
+							<http:success-status-code-validator values="200,201,204,400,401,403,404,409,422,500,502,503" />
+						</http:response-validator>
+					</http:request>
+					<set-variable variableName="httpStatus" value="#[attributes.statusCode default 200]" doc:name="CÃ³digo HTTP upstream" />
+				</when>
+				<otherwise>
+					<set-payload value="#[payload]" doc:name="Mantener error 404" />
+				</otherwise>
+			</choice>
+			<error-handler>
+				<on-error-continue doc:name="Proxy error">
+					<set-variable variableName="httpStatus" value="502" doc:name="502" />
+					<set-payload value="#[%dw 2.0 output application/json --- { error: true, bff: true, errorType: (if (error.errorType != null) ((error.errorType.namespace default '') ++ ':' ++ (error.errorType.identifier default '')) else 'N/A'), description: error.description default '', causeMessage: (error.cause.message default '') as String, rootCause: (if (error.cause != null and error.cause.cause != null) (error.cause.cause.message default '') else '') as String }]" doc:name="JSON error" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+
+</mule>
+

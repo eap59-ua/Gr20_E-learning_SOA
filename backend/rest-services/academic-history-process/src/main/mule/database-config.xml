@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+
+	<db:config name="MTIS_Database_Config" doc:name="MySQL elearning_academic_history">
+		<db:generic-connection doc:name="Generic JDBC"
+			url="jdbc:mysql://${db.host}:${db.port}/${db.name}?useSSL=false&amp;serverTimezone=UTC&amp;allowPublicKeyRetrieval=true&amp;characterEncoding=UTF-8"
+			driverClassName="com.mysql.cj.jdbc.Driver"
+			user="${db.user}"
+			password="${db.password}" />
+	</db:config>
+
+</mule>
