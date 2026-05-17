@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <wsdl:definitions
     name="LegacyConnectorService"
     targetNamespace="http://mtis.ua.es/elearning/legacy"
@@ -33,6 +33,10 @@
           <xs:element name="title" type="xs:string"/>
           <xs:element name="description" type="xs:string" minOccurs="0"/>
           <xs:element name="category" type="xs:string" minOccurs="0"/>
+          <xs:element name="durationHours" type="xs:int" minOccurs="0"/>
+          <xs:element name="price" type="xs:decimal" minOccurs="0"/>
+          <xs:element name="currency" type="xs:string" minOccurs="0"/>
+          <xs:element name="active" type="xs:boolean" minOccurs="0"/>
           <xs:element name="lastModified" type="xs:dateTime" minOccurs="0"/>
           <xs:element name="checksum" type="xs:string" minOccurs="0"/>
         </xs:sequence>
@@ -82,6 +86,22 @@
           </xs:sequence>
         </xs:complexType>
       </xs:element>
+		  <xs:element name="consultarMetadatosContenidoRequest">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="externalContentId" type="xs:string"/>
+              <xs:element name="sourceSystem" type="xs:string" minOccurs="0"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+
+        <xs:element name="consultarMetadatosContenidoResponse">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="metadata" type="tns:ExternalContentMetadataType"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
     </xs:schema>
   </wsdl:types>
 
@@ -104,6 +124,14 @@
   <wsdl:message name="ServiceFaultMessage">
     <wsdl:part name="fault" element="tns:ServiceFault"/>
   </wsdl:message>
+	
+  <wsdl:message name="ConsultarMetadatosContenidoInput">
+      <wsdl:part name="parameters" element="tns:consultarMetadatosContenidoRequest"/>
+  </wsdl:message>
+
+  <wsdl:message name="ConsultarMetadatosContenidoOutput">
+      <wsdl:part name="parameters" element="tns:consultarMetadatosContenidoResponse"/>
+  </wsdl:message>
 
   <wsdl:portType name="LegacyConnectorPortType">
     <wsdl:operation name="getExternalContents">
@@ -115,6 +143,12 @@
     <wsdl:operation name="synchronizeContents">
       <wsdl:input message="tns:SynchronizeContentsInput"/>
       <wsdl:output message="tns:SynchronizeContentsOutput"/>
+      <wsdl:fault name="ServiceFault" message="tns:ServiceFaultMessage"/>
+    </wsdl:operation>
+  
+    <wsdl:operation name="consultarMetadatosContenido">
+      <wsdl:input message="tns:ConsultarMetadatosContenidoInput"/>
+      <wsdl:output message="tns:ConsultarMetadatosContenidoOutput"/>
       <wsdl:fault name="ServiceFault" message="tns:ServiceFaultMessage"/>
     </wsdl:operation>
   </wsdl:portType>
@@ -147,6 +181,18 @@
         <soap:fault name="ServiceFault" use="literal"/>
       </wsdl:fault>
     </wsdl:operation>
+    <wsdl:operation name="consultarMetadatosContenido">
+    <soap:operation soapAction="http://mtis.ua.es/elearning/legacy/consultarMetadatosContenido"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="ServiceFault">
+        <soap:fault name="ServiceFault" use="literal"/>
+      </wsdl:fault>
+  </wsdl:operation>
   </wsdl:binding>
 
   <wsdl:service name="LegacyConnectorService">

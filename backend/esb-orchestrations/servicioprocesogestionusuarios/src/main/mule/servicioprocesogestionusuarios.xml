@@ -1,0 +1,333 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <!-- ==================== CONFIGURACIÓN GLOBAL ==================== -->
+
+    <!-- Listener: este proceso escucha en puerto 8083 -->
+    <http:listener-config name="Proceso-httpListenerConfig">
+        <http:listener-connection host="0.0.0.0" port="8090" />
+    </http:listener-config>
+
+    <!-- Request hacia UserService (puerto 8081) -->
+    <http:request-config name="UserService-requestConfig">
+        <http:request-connection host="localhost" port="8081" />
+    </http:request-config>
+
+    <!-- Request hacia EmailNotificationService (puerto 8082) -->
+    <http:request-config name="EmailService-requestConfig">
+        <http:request-connection host="localhost" port="8082" />
+    </http:request-config>
+
+    <!-- ==================== FLUJO PRINCIPAL: REGISTRAR USUARIO ==================== -->
+    <!--
+        POST http://localhost:8083/proceso/registrar-usuario
+        Body: { "name": "...", "email": "...", "password": "...", "role": "student" }
+        Header: WSKey = 1234
+
+        Este flujo orquesta:
+        1. Llama a UserService para crear el usuario
+        2. Si se crea correctamente, llama a EmailNotificationService para notificar
+        3. Devuelve respuesta final al cliente
+    -->
+    <flow name="proceso-registrar-usuario">
+        <http:listener config-ref="Proceso-httpListenerConfig" path="/proceso/registrar-usuario">
+            <http:response statusCode="#[vars.httpStatus default 200]" />
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+            </http:error-response>
+        </http:listener>
+
+        <!-- Paso 1: Guardar datos del body antes de cualquier llamada -->
+        <ee:transform doc:name="Guardar datos entrada">
+            <ee:variables>
+                <ee:set-variable variableName="userData"><![CDATA[%dw 2.0
+output application/java
+---
+{
+    name: payload.name,
+    email: payload.email,
+    password: payload.password,
+    role: payload.role default "student"
+}]]></ee:set-variable>
+                <ee:set-variable variableName="wskey"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers.WSKey default "1234"]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <!-- Paso 2: Llamar a UserService POST /users -->
+        <ee:transform doc:name="Preparar body para UserService">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    name: vars.userData.name,
+    email: vars.userData.email,
+    password: vars.userData.password,
+    role: vars.userData.role
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <http:request config-ref="UserService-requestConfig"
+                      method="POST"
+                      path="/api/users"
+                      doc:name="Crear usuario en UserService">
+            <http:headers><![CDATA[#[{'WSKey': vars.wskey, 'Content-Type': 'application/json'}]]]></http:headers>
+        </http:request>
+
+        <!-- Paso 3: Guardar respuesta de UserService -->
+        <ee:transform doc:name="Guardar respuesta UserService">
+            <ee:variables>
+                <ee:set-variable variableName="userServiceResponse"><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-variable>
+                <ee:set-variable variableName="userServiceStatus"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.statusCode]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <!-- Paso 4: Decidir según respuesta de UserService -->
+        <choice doc:name="¿Usuario creado correctamente?">
+            <when expression="#[vars.userServiceStatus == 201]">
+
+                <!-- Paso 5a: Usuario creado → enviar email de bienvenida -->
+                <ee:transform doc:name="Preparar body para EmailService">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    to: vars.userData.email,
+    subject: "Bienvenido a la plataforma E-Learning",
+    body: "Hola " ++ vars.userData.name ++ ", tu cuenta ha sido creada correctamente. ¡Bienvenido!"
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+
+                <http:request config-ref="EmailService-requestConfig"
+                              method="POST"
+                              path="/api/notifications/email"
+                              doc:name="Enviar email de bienvenida">
+                    <http:headers><![CDATA[#[{'Content-Type': 'application/json'}]]]></http:headers>
+                </http:request>
+
+                <!-- Paso 6a: Respuesta final exitosa -->
+                <ee:transform doc:name="Respuesta proceso OK">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    ok: true,
+    message: "Proceso completado: usuario registrado y notificación enviada",
+    data: {
+        id: vars.userServiceResponse.data.id,
+        name: vars.userServiceResponse.data.name,
+        email: vars.userServiceResponse.data.email,
+        role: vars.userServiceResponse.data.role
+    }
+}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">201</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+
+            </when>
+            <when expression="#[vars.userServiceStatus == 409]">
+
+                <!-- Paso 5b: Email duplicado -->
+                <ee:transform doc:name="Respuesta email duplicado">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    ok: false,
+    message: "No se pudo completar el proceso: el email ya está registrado en el sistema"
+}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">409</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+
+            </when>
+            <otherwise>
+
+                <!-- Paso 5c: Error genérico -->
+                <ee:transform doc:name="Respuesta error genérico">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    ok: false,
+    message: "Error al registrar el usuario. Por favor, inténtelo de nuevo."
+}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">500</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+
+            </otherwise>
+        </choice>
+
+        <!-- Manejo de errores del flujo -->
+        <error-handler>
+            <on-error-propagate type="ANY">
+                <ee:transform doc:name="Error en el proceso">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    ok: false,
+    message: "El proceso se ha tenido que cancelar por errores durante la ejecución"
+}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">500</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+
+    <!-- ==================== FLUJO: CONSULTAR USUARIO ==================== -->
+    <!--
+        GET http://localhost:8083/proceso/consultar-usuario/{userId}
+        Header: WSKey = 1234
+        Llama a UserService GET /users/{userId} y devuelve los datos
+    -->
+    <flow name="proceso-consultar-usuario">
+        <http:listener config-ref="Proceso-httpListenerConfig" path="/proceso/consultar-usuario/{userId}">
+            <http:response statusCode="#[vars.httpStatus default 200]" />
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+            </http:error-response>
+        </http:listener>
+
+        <ee:transform doc:name="Capturar userId">
+            <ee:variables>
+                <ee:set-variable variableName="userId"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams.'userId']]></ee:set-variable>
+                <ee:set-variable variableName="wskey"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers.WSKey default "1234"]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <http:request config-ref="UserService-requestConfig"
+                      method="GET"
+                      path="#['/api/users/' ++ vars.userId]"
+                      doc:name="Consultar usuario en UserService">
+            <http:headers><![CDATA[#[{'WSKey': vars.wskey}]]]></http:headers>
+        </http:request>
+
+        <ee:transform doc:name="Respuesta consulta">
+            <ee:variables>
+                <ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.statusCode]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <error-handler>
+            <on-error-propagate type="ANY">
+                <ee:transform doc:name="Error consulta">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "El proceso se ha tenido que cancelar por errores durante la ejecución"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">500</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+
+    <!-- ==================== FLUJO: ELIMINAR USUARIO ==================== -->
+    <!--
+        DELETE http://localhost:8083/proceso/eliminar-usuario/{userId}
+        Header: WSKey = 1234
+        Llama a UserService DELETE /users/{userId}
+        Si se elimina, no se envía notificación (baja lógica)
+    -->
+    <flow name="proceso-eliminar-usuario">
+        <http:listener config-ref="Proceso-httpListenerConfig" path="/proceso/eliminar-usuario/{userId}">
+            <http:response statusCode="#[vars.httpStatus default 200]" />
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+            </http:error-response>
+        </http:listener>
+
+        <ee:transform doc:name="Capturar userId">
+            <ee:variables>
+                <ee:set-variable variableName="userId"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams.'userId']]></ee:set-variable>
+                <ee:set-variable variableName="wskey"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers.WSKey default "1234"]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <http:request config-ref="UserService-requestConfig"
+                      method="DELETE"
+                      path="#['/api/users/' ++ vars.userId]"
+                      doc:name="Eliminar usuario en UserService">
+            <http:headers><![CDATA[#[{'WSKey': vars.wskey}]]]></http:headers>
+        </http:request>
+
+        <ee:transform doc:name="Respuesta eliminación">
+            <ee:variables>
+                <ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.statusCode]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <error-handler>
+            <on-error-propagate type="ANY">
+                <ee:transform doc:name="Error eliminación">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ok: false, message: "El proceso se ha tenido que cancelar por errores durante la ejecución"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">500</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+
+</mule>
