@@ -1,0 +1,14 @@
+{
+  "minMuleVersion": "4.4.0",
+  "name": "mock-email-notification",
+  "requiredProduct": "MULE",
+  "classLoaderModelLoaderDescriptor": {
+    "id": "mule",
+    "attributes": { "exportedResources": [] }
+  },
+  "bundleDescriptorLoader": {
+    "id": "mule",
+    "attributes": {}
+  },
+  "configs": [ "mock-email-notification.xml" ]
+}

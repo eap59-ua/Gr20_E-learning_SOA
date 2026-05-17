@@ -1,0 +1,532 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  ESB Orchestration: Compra de Curso (SOAP)
+  ============================================================================
+  Cumple el requisito 4.b del enunciado oficial:
+    "mínimo 1 flujo SOAP orquestado mediante un ESB"
+
+  PATRÓN: Saga por ORQUESTACIÓN (sección 7.2.2 de la memoria).
+  El ESB es el coordinador central que llama en cadena a los servicios
+  y aplica compensación si algo falla.
+
+  ENDPOINT: POST http://localhost:8091/esb/services/PurchaseOrchestration
+            SOAPAction: http://mtis.ua.es/elearning/esb/orchestratePurchase
+
+  SECUENCIA:
+    1. Validar curso          → CourseService (REST, 8082)
+    2. Iniciar compra         → CoursePurchaseProcessService.startPurchase (SOAP, 8088)
+    3. Procesar pago          → CoursePurchaseProcessService.processPayment (SOAP, 8088)
+    4. Confirmar pago         → CoursePurchaseProcessService.confirmPayment (SOAP, 8088)
+    5. Crear matrícula        → CoursePurchaseProcessService.finalizePurchase (SOAP, 8088)
+    6. Notificar al usuario   → EmailNotificationService (REST, 8085)
+
+  COMPENSACIÓN: si falla cualquier paso desde el 3, se invoca cancelPurchase.
+  ============================================================================
+-->
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core
+        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/ee/core
+        http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/http
+        http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <!-- Listener del ESB (entrada del flujo) -->
+    <http:listener-config name="ESB_SOAP_Listener" doc:id="esb-soap-listener">
+        <http:listener-connection host="0.0.0.0" port="8091"/>
+    </http:listener-config>
+
+    <!-- Clientes HTTP hacia los servicios orquestados -->
+    <http:request-config name="ESB_To_Course" doc:id="esb-to-course">
+        <http:request-connection host="localhost" port="8082"/>
+    </http:request-config>
+
+    <http:request-config name="ESB_To_Purchase" doc:id="esb-to-purchase">
+        <http:request-connection host="localhost" port="8088"/>
+    </http:request-config>
+
+    <http:request-config name="ESB_To_Email" doc:id="esb-to-email">
+        <http:request-connection host="localhost" port="8085"/>
+    </http:request-config>
+
+    <!--
+      ========================================================================
+      FLOW PRINCIPAL: orquestración completa
+      ========================================================================
+    -->
+    <flow name="esb-purchase-orchestration-main" doc:id="esb-main">
+        <http:listener config-ref="ESB_SOAP_Listener"
+                       path="/esb/services/PurchaseOrchestration"
+                       allowedMethods="POST"
+                       doc:name="POST /esb/services/PurchaseOrchestration">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+                                       --- { "Content-Type": "text/xml; charset=UTF-8" }]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="500">
+                <http:body><![CDATA[#[vars.faultPayload default payload]]]></http:body>
+                <http:headers><![CDATA[#[output application/java
+                                       --- { "Content-Type": "text/xml; charset=UTF-8" }]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+
+        <!-- 1. Parsear el SOAP de entrada + generar correlationId -->
+        <ee:transform doc:name="Parse + correlationId">
+            <ee:variables>
+                <ee:set-variable variableName="req"><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns esb http://mtis.ua.es/elearning/esb
+---
+{
+  userId:        (payload.soap#Envelope.soap#Body.esb#orchestratePurchaseRequest.esb#userId) as String,
+  courseId:      (payload.soap#Envelope.soap#Body.esb#orchestratePurchaseRequest.esb#courseId) as String,
+  paymentMethod: (payload.soap#Envelope.soap#Body.esb#orchestratePurchaseRequest.esb#paymentMethod default "CARD") as String
+}]]></ee:set-variable>
+                <ee:set-variable variableName="correlationId"><![CDATA[%dw 2.0
+output application/java
+import * from dw::Runtime
+---
+"ESB-PUR-" ++ uuid()[0 to 7]]]></ee:set-variable>
+                <ee:set-variable variableName="steps"><![CDATA[%dw 2.0
+output application/java
+---
+[]]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <logger level="INFO"
+                message='#["[ESB-Purchase][" ++ vars.correlationId ++ "] START user=" ++ vars.req.userId
+                          ++ " course=" ++ vars.req.courseId]'/>
+
+        <!-- 2. Validar curso vía CourseService REST -->
+        <flow-ref name="esb-step-validate-course"/>
+
+        <!-- 3. Iniciar compra vía CoursePurchaseProcessService SOAP -->
+        <flow-ref name="esb-step-start-purchase"/>
+
+        <!-- 4. Procesar pago -->
+        <flow-ref name="esb-step-process-payment"/>
+
+        <!-- 5. Confirmar pago -->
+        <flow-ref name="esb-step-confirm-payment"/>
+
+        <!-- 6. Crear matrícula -->
+        <flow-ref name="esb-step-finalize-purchase"/>
+
+        <!-- 7. Notificar al usuario (best-effort, no rompe la orquestación) -->
+        <flow-ref name="esb-step-notify-user"/>
+
+        <!-- 8. Construir respuesta SOAP final -->
+        <ee:transform doc:name="Build SOAP response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns esb http://mtis.ua.es/elearning/esb
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      esb#orchestratePurchaseResponse: {
+        esb#correlationId: vars.correlationId,
+        esb#purchaseId:    vars.purchaseId,
+        esb#transactionId: vars.transactionId,
+        esb#enrollmentId:  vars.enrollmentId,
+        esb#status:        "COMPLETED",
+        esb#steps: {
+          (vars.steps map ((step) -> { esb#step: step }))
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <logger level="INFO"
+                message='#["[ESB-Purchase][" ++ vars.correlationId ++ "] COMPLETED purchaseId=" ++ vars.purchaseId
+                          ++ " enrollmentId=" ++ vars.enrollmentId]'/>
+
+        <error-handler>
+            <on-error-continue type="ANY" doc:name="On any error → compensate">
+                <flow-ref name="esb-compensation-flow"/>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <!--
+      ========================================================================
+      PASO 1: Validar curso (REST → CourseService)
+      ========================================================================
+    -->
+    <sub-flow name="esb-step-validate-course">
+        <logger level="INFO"
+                message='#["[ESB-Purchase][" ++ vars.correlationId ++ "] Step 1: validate course"]'/>
+        <http:request method="GET"
+                      path='#["/api/v1/courses/" ++ vars.req.courseId]'
+                      config-ref="ESB_To_Course"
+                      doc:name="GET /courses/{id}"/>
+        <ee:transform doc:name="Extract course data">
+            <ee:variables>
+                <ee:set-variable variableName="coursePrice"><![CDATA[%dw 2.0
+output application/java
+---
+(payload.price) as Number]]></ee:set-variable>
+                <ee:set-variable variableName="courseCurrency"><![CDATA[%dw 2.0
+output application/java
+---
+(payload.currency default "EUR") as String]]></ee:set-variable>
+                <ee:set-variable variableName="steps"><![CDATA[%dw 2.0
+output application/java
+---
+vars.steps ++ ["course-validated"]]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+    </sub-flow>
+
+    <!--
+      ========================================================================
+      PASO 2: Iniciar compra (SOAP → CoursePurchaseProcessService)
+      ========================================================================
+    -->
+    <sub-flow name="esb-step-start-purchase">
+        <logger level="INFO"
+                message='#["[ESB-Purchase][" ++ vars.correlationId ++ "] Step 2: startPurchase"]'/>
+        <ee:transform doc:name="Build SOAP startPurchase">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      pur#startPurchaseRequest: {
+        pur#userId:   vars.req.userId,
+        pur#courseId: vars.req.courseId,
+        pur#price:    vars.coursePrice,
+        pur#currency: vars.courseCurrency
+      }
+    }
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <http:request method="POST"
+                      path="/services/CoursePurchaseProcessService"
+                      config-ref="ESB_To_Purchase"
+                      doc:name="POST startPurchase">
+            <http:headers><![CDATA[#[{
+                "Content-Type": "text/xml; charset=UTF-8",
+                "SOAPAction":   "http://mtis.ua.es/elearning/purchase/startPurchase"
+            }]]]></http:headers>
+        </http:request>
+        <ee:transform doc:name="Extract purchaseId">
+            <ee:variables>
+                <ee:set-variable variableName="purchaseId"><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+(payload.soap#Envelope.soap#Body.pur#startPurchaseResponse.pur#purchaseId) as String]]></ee:set-variable>
+                <ee:set-variable variableName="steps"><![CDATA[%dw 2.0
+output application/java
+---
+vars.steps ++ ["purchase-started"]]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+    </sub-flow>
+
+    <!--
+      ========================================================================
+      PASO 3: Procesar pago (SOAP)
+      ========================================================================
+    -->
+    <sub-flow name="esb-step-process-payment">
+        <logger level="INFO"
+                message='#["[ESB-Purchase][" ++ vars.correlationId ++ "] Step 3: processPayment"]'/>
+        <ee:transform doc:name="Build SOAP processPayment">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      pur#processPaymentRequest: {
+        pur#purchaseId:    vars.purchaseId,
+        pur#paymentMethod: vars.req.paymentMethod
+      }
+    }
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <http:request method="POST"
+                      path="/services/CoursePurchaseProcessService"
+                      config-ref="ESB_To_Purchase"
+                      doc:name="POST processPayment">
+            <http:headers><![CDATA[#[{
+                "Content-Type": "text/xml; charset=UTF-8",
+                "SOAPAction":   "http://mtis.ua.es/elearning/purchase/processPayment"
+            }]]]></http:headers>
+        </http:request>
+        <ee:transform doc:name="Extract transactionId">
+            <ee:variables>
+                <ee:set-variable variableName="transactionId"><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+(payload.soap#Envelope.soap#Body.pur#processPaymentResponse.pur#transactionId) as String]]></ee:set-variable>
+                <ee:set-variable variableName="steps"><![CDATA[%dw 2.0
+output application/java
+---
+vars.steps ++ ["payment-processed"]]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+    </sub-flow>
+
+    <!--
+      ========================================================================
+      PASO 4: Confirmar pago (SOAP)
+      ========================================================================
+    -->
+    <sub-flow name="esb-step-confirm-payment">
+        <logger level="INFO"
+                message='#["[ESB-Purchase][" ++ vars.correlationId ++ "] Step 4: confirmPayment"]'/>
+        <ee:transform doc:name="Build SOAP confirmPayment">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      pur#confirmPaymentRequest: {
+        pur#purchaseId:    vars.purchaseId,
+        pur#transactionId: vars.transactionId
+      }
+    }
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <http:request method="POST"
+                      path="/services/CoursePurchaseProcessService"
+                      config-ref="ESB_To_Purchase"
+                      doc:name="POST confirmPayment">
+            <http:headers><![CDATA[#[{
+                "Content-Type": "text/xml; charset=UTF-8",
+                "SOAPAction":   "http://mtis.ua.es/elearning/purchase/confirmPayment"
+            }]]]></http:headers>
+        </http:request>
+        <ee:transform doc:name="Update steps">
+            <ee:variables>
+                <ee:set-variable variableName="steps"><![CDATA[%dw 2.0
+output application/java
+---
+vars.steps ++ ["payment-confirmed"]]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+    </sub-flow>
+
+    <!--
+      ========================================================================
+      PASO 5: Finalizar compra → crea matrícula (SOAP)
+      ========================================================================
+    -->
+    <sub-flow name="esb-step-finalize-purchase">
+        <logger level="INFO"
+                message='#["[ESB-Purchase][" ++ vars.correlationId ++ "] Step 5: finalizePurchase"]'/>
+        <ee:transform doc:name="Build SOAP finalizePurchase">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      pur#finalizePurchaseRequest: {
+        pur#purchaseId: vars.purchaseId
+      }
+    }
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <http:request method="POST"
+                      path="/services/CoursePurchaseProcessService"
+                      config-ref="ESB_To_Purchase"
+                      doc:name="POST finalizePurchase">
+            <http:headers><![CDATA[#[{
+                "Content-Type": "text/xml; charset=UTF-8",
+                "SOAPAction":   "http://mtis.ua.es/elearning/purchase/finalizePurchase"
+            }]]]></http:headers>
+        </http:request>
+        <ee:transform doc:name="Extract enrollmentId">
+            <ee:variables>
+                <ee:set-variable variableName="enrollmentId"><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+(payload.soap#Envelope.soap#Body.pur#finalizePurchaseResponse.pur#enrollmentId) as String]]></ee:set-variable>
+                <ee:set-variable variableName="steps"><![CDATA[%dw 2.0
+output application/java
+---
+vars.steps ++ ["enrollment-created"]]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+    </sub-flow>
+
+    <!--
+      ========================================================================
+      PASO 6: Notificar al usuario (REST, best-effort)
+      ========================================================================
+    -->
+    <sub-flow name="esb-step-notify-user">
+        <logger level="INFO"
+                message='#["[ESB-Purchase][" ++ vars.correlationId ++ "] Step 6: notify user"]'/>
+        <try doc:name="Notify (best-effort)">
+            <ee:transform doc:name="Build notification">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  userId:   vars.req.userId,
+  courseId: vars.req.courseId,
+  email:    vars.req.userId ++ "@alu.ua.es"
+}]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+            <http:request method="POST"
+                          path="/api/v1/notifications/enrollment"
+                          config-ref="ESB_To_Email"
+                          doc:name="POST /notifications/enrollment">
+                <http:headers><![CDATA[#[{"Content-Type": "application/json"}]]]></http:headers>
+            </http:request>
+            <ee:transform doc:name="Mark step done">
+                <ee:variables>
+                    <ee:set-variable variableName="steps"><![CDATA[%dw 2.0
+output application/java
+---
+vars.steps ++ ["user-notified"]]]></ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+            <error-handler>
+                <on-error-continue type="ANY">
+                    <logger level="WARN"
+                            message='#["[ESB-Purchase][" ++ vars.correlationId ++ "] Notification failed (non-blocking)"]'/>
+                    <ee:transform>
+                        <ee:variables>
+                            <ee:set-variable variableName="steps"><![CDATA[%dw 2.0
+output application/java
+---
+vars.steps ++ ["user-notification-skipped"]]]></ee:set-variable>
+                        </ee:variables>
+                    </ee:transform>
+                </on-error-continue>
+            </error-handler>
+        </try>
+    </sub-flow>
+
+    <!--
+      ========================================================================
+      FLOW DE COMPENSACIÓN (Saga rollback)
+      ========================================================================
+      Se ejecuta si cualquier paso de la orquestación falla.
+      Si ya teníamos purchaseId, intentamos cancelar la compra para liberar.
+    -->
+    <sub-flow name="esb-compensation-flow">
+        <logger level="ERROR"
+                message='#["[ESB-Purchase][" ++ (vars.correlationId default "?") ++ "] FAILED step=" ++ (error.description default "?")]'/>
+
+        <choice doc:name="Need compensation?">
+            <when expression="#[vars.purchaseId != null]">
+                <logger level="WARN"
+                        message='#["[ESB-Purchase][" ++ vars.correlationId ++ "] Compensating: cancelPurchase " ++ vars.purchaseId]'/>
+                <try>
+                    <ee:transform doc:name="Build SOAP cancelPurchase">
+                        <ee:message>
+                            <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns pur http://mtis.ua.es/elearning/purchase
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      pur#cancelPurchaseRequest: {
+        pur#purchaseId: vars.purchaseId,
+        pur#reason:     "ORCHESTRATION_FAILED: " ++ (error.description default "unknown")
+      }
+    }
+  }
+}]]></ee:set-payload>
+                        </ee:message>
+                    </ee:transform>
+                    <http:request method="POST"
+                                  path="/services/CoursePurchaseProcessService"
+                                  config-ref="ESB_To_Purchase"
+                                  doc:name="POST cancelPurchase (compensation)">
+                        <http:headers><![CDATA[#[{
+                            "Content-Type": "text/xml; charset=UTF-8",
+                            "SOAPAction":   "http://mtis.ua.es/elearning/purchase/cancelPurchase"
+                        }]]]></http:headers>
+                    </http:request>
+                    <error-handler>
+                        <on-error-continue type="ANY">
+                            <logger level="ERROR" message='#["Compensation failed too: " ++ (error.description default "?")]'/>
+                        </on-error-continue>
+                    </error-handler>
+                </try>
+            </when>
+        </choice>
+
+        <!-- Construir SOAP Fault para devolver al cliente -->
+        <ee:transform doc:name="Build SOAP Fault">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns esb http://mtis.ua.es/elearning/esb
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      soap#Fault: {
+        faultcode:   "soap:Server",
+        faultstring: "Purchase orchestration failed: " ++ (error.description default "unknown"),
+        detail: {
+          esb#OrchestrationFault: {
+            esb#correlationId:    vars.correlationId default "?",
+            esb#failedAtStep:     (vars.steps default []) ++ ["FAILED"],
+            esb#errorMessage:     error.description default "?",
+            esb#compensationDone: vars.purchaseId != null
+          }
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <set-variable variableName="faultPayload" value="#[payload]"/>
+    </sub-flow>
+
+</mule>

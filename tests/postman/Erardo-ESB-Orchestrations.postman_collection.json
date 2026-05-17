@@ -1,0 +1,40 @@
+{
+  "info": {
+    "name": "Grupo 20 - Erardo ESB Orchestrations",
+    "description": "Colección Postman para las 2 orquestaciones ESB de Erardo. Cumplen el apartado 4.b del enunciado: 1 flujo SOAP + 1 flujo REST orquestados por ESB.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "ESB Compra de Curso (SOAP, puerto 8091)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "text/xml; charset=UTF-8" },
+          { "key": "SOAPAction",   "value": "http://mtis.ua.es/elearning/esb/orchestratePurchase" }
+        ],
+        "url": { "raw": "http://localhost:8091/esb/services/PurchaseOrchestration" },
+        "body": {
+          "mode": "raw",
+          "raw": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:esb=\"http://mtis.ua.es/elearning/esb\">\n  <soap:Body>\n    <esb:orchestratePurchaseRequest>\n      <esb:userId>STU-0042</esb:userId>\n      <esb:courseId>COURSE-MTIS-2026</esb:courseId>\n      <esb:paymentMethod>CARD</esb:paymentMethod>\n    </esb:orchestratePurchaseRequest>\n  </soap:Body>\n</soap:Envelope>"
+        },
+        "description": "Orquesta los 6 pasos del flujo de compra (validate course → start → process → confirm → finalize → notify). Devuelve correlationId, purchaseId, transactionId, enrollmentId y la lista de pasos completados."
+      }
+    },
+    {
+      "name": "ESB Emisión Certificado (REST, puerto 8092)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "http://localhost:8092/esb/issue-certificate" },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"studentId\": \"STU-0042\",\n  \"courseId\": \"COURSE-MTIS-2026\",\n  \"enrollmentId\": \"ENR-12345678\"\n}"
+        },
+        "description": "Orquesta los 4 pasos del flujo de emisión: get grade (con fallback si EvaluationService no está) → check eligibility → generate certificate SOAP → notify. Demuestra mezcla SOAP+REST en una sola orquestación."
+      }
+    }
+  ]
+}

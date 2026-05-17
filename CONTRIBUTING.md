@@ -59,25 +59,32 @@ db.name=<nombre-tu-bbdd>
 
 Cada servicio usa **su propia base de datos** dentro del mismo MySQL (ej. `elearning_certificates`, `elearning_courses`...). Nombre por convención: `elearning_<recurso-en-plural>`.
 
-## 🔌 Puertos asignados (para no chocar)
+## 🔌 Puertos asignados (acuerdo grupo 15/05/2026)
 
-| Servicio | Puerto |
-|---|---|
-| CertificateService (SOAP) | 8081 |
-| CoursePurchaseProcessService (SOAP) | 8082 |
-| LegacyConnectorService (SOAP) | 8083 |
-| FinancialGatewayService (REST) | 3001 |
-| CourseService (REST) | 3002 |
-| EnrollmentService (REST) | 3003 |
-| UserService (REST) | 3004 |
-| EmailNotificationService (REST) | 3005 |
-| EvaluationService (REST) | 3006 |
-| AcademicHistoryProcess (REST) | 3007 |
-| ESB Orquestación SOAP | 9001 |
-| ESB Orquestación REST | 9002 |
-| Frontend dev server | 5173 |
+> Esquema unificado en rango **8081-8092** acordado en el chat de WhatsApp el 15/05.
+
+| Puerto | Servicio | Tipo | Responsable |
+|---|---|---|---|
+| 8081 | UserService | REST | Mo |
+| 8082 | CourseService | REST | Joaco |
+| 8083 | EnrollmentService | REST | Joaco |
+| 8084 | EvaluationService | REST | Marcos |
+| 8085 | EmailNotificationService | REST | Mo |
+| 8086 | FinancialGatewayService | REST | Tano |
+| 8087 | **CertificateService** | **SOAP** | **Erardo** |
+| 8088 | **CoursePurchaseProcessService** | **SOAP** | **Erardo** |
+| 8089 | LegacyConnectorService | SOAP | Tano |
+| 8090 | Orquestación user+email (ESB) | REST | Mo |
+| 8091 | Orquestación compra (ESB SOAP) | SOAP | Erardo |
+| 8092 | Orquestación certificado (ESB REST) | REST | Erardo |
+| 8093 | AcademicHistoryProcess | REST | Marcos |
+| 5173 | Frontend dev server | — | (a asignar) |
 
 > Si necesitas otro puerto avisa al grupo para actualizar esta tabla.
+
+### Mocks temporales (para pruebas mientras el equipo entrega)
+
+Mientras no estén los servicios reales del equipo, se pueden usar los mocks Mule de `backend/rest-services/_mocks/`. **Usan los mismos puertos** que los reales (8082, 8083, 8085, 8086), así cuando los reales se suben basta con parar el mock y arrancar el servicio del compañero — sin tocar configuración en los servicios que los consumen.
 
 ## ✅ Checklist antes de pushear
 

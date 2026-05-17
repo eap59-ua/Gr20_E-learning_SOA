@@ -50,7 +50,7 @@
     <http:listener-config name="HTTP_Listener_config_cert"
                           doc:name="HTTP Listener config"
                           doc:id="http-cert">
-        <http:listener-connection host="${http.host}" port="${http.port}"/>
+        <http:listener-connection host="0.0.0.0" port="8087"/>
     </http:listener-config>
 
     <!--
@@ -58,11 +58,11 @@
       Credenciales unificadas con el resto del equipo: mule / mule123.
     -->
     <db:config name="MySQL_Config_cert" doc:name="MySQL config" doc:id="db-cert">
-        <db:my-sql-connection host="${db.host}"
-                              port="${db.port}"
-                              user="${db.user}"
-                              password="${db.password}"
-                              database="${db.name}"/>
+        <db:my-sql-connection host="localhost"
+                              port="3306"
+                              user="mule"
+                              password="mule123"
+                              database="elearning_certificates"/>
     </db:config>
 
     <!--
@@ -72,8 +72,8 @@
     <http:request-config name="EmailNotification_Config"
                          doc:name="Email Notification config"
                          doc:id="http-email">
-        <http:request-connection host="${notification.host}"
-                                 port="${notification.port}"/>
+        <http:request-connection host="localhost"
+                                 port="8085"/>
     </http:request-config>
 
     <!--
@@ -214,7 +214,7 @@ var row = vars.existing[0]
             <otherwise>
                 <!-- 3) Validación de elegibilidad: nota mínima -->
                 <choice doc:name="Eligible?">
-                    <when expression="#[vars.req.finalGrade as Number &lt; (p('certificate.passingGrade') as Number)]">
+                    <when expression="#[vars.req.finalGrade as Number &lt; (5.0 as Number)]">
                         <!-- No supera el mínimo: NOT_ELIGIBLE (no es Fault, es respuesta de negocio) -->
                         <ee:transform doc:name="Build NOT_ELIGIBLE response">
                             <ee:message>
@@ -232,7 +232,7 @@ ns cer http://mtis.ua.es/elearning/certificates
         cer#status:    "NOT_ELIGIBLE",
         cer#message:   "Final grade " ++ (vars.req.finalGrade as String)
                         ++ " is below the minimum required ("
-                        ++ p('certificate.passingGrade') ++ ")"
+                        ++ 5.0 ++ ")"
       }
     }
   }
@@ -252,7 +252,7 @@ var uuid = uuid()
 ---
 {
   certificateId:       uuid,
-  repositoryReference: (p('certificate.repositoryPrefix') default "REPO-CERT-")
+  repositoryReference: ("REPO-CERT-")
                        ++ (uuid[0 to 7]),
   issueDate:           now() as String { format: "yyyy-MM-dd" }
 }]]></ee:set-variable>
@@ -284,7 +284,7 @@ var uuid = uuid()
                         <!-- 6) Notificación (best-effort, NO bloquea la respuesta) -->
                         <try doc:name="Notify (best-effort)">
                             <http:request method="POST"
-                                          path="${notification.basePath}/notifications/certificate"
+                                          path="/api/v1/notifications/certificate"
                                           doc:name="POST /notifications/certificate"
                                           config-ref="EmailNotification_Config">
                                 <http:body><![CDATA[#[output application/json

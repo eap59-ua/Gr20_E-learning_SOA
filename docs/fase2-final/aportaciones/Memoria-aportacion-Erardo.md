@@ -1,151 +1,180 @@
-# Aportación a la memoria — Erardo (CertificateService + CoursePurchaseProcessService)
+# Aportación a la Memoria Fase 2 — Erardo
 
-> Texto listo para pegar en el documento de Google Docs del grupo, en la sección
-> de **Implementación / Fase 2** (apartado 8.2 de la memoria actual: *Trabajo pendiente para la segunda fase*).
+> **Texto listo para pegar en el Google Doc del grupo**, en la sección "Implementación del backend" / "Servicios SOAP" / "Orquestaciones ESB".
 >
-> Toda la redacción referencia los apartados originales para que el profesor
-> pueda trazar enunciado ↔ implementación.
+> Cada bloque referencia los apartados originales del enunciado y de la memoria fase 1 para que el profesor pueda trazar requisito ↔ implementación.
 
 ---
 
-## A. CertificateService — Implementación SOAP en Mule 4
+## A · Servicios SOAP implementados
 
-### A.1. Objetivo
-Materializar el contrato WSDL definido en el apartado **6.2 (CertificateService)** y descrito como caso de uso en el apartado **9.1 (Proceso de Negocio: Emisión de Certificado)**. El servicio expone dos operaciones SOAP:
+### A.1 CertificateService (SOAP)
 
-- `generateCertificate(studentId, courseId, finalGrade, completionDate, [requestId])`
-- `getCertificate(certificateId)`
+Servicio Task-centric (clasificación Thomas Erl, sección 4.2 de la memoria fase 1) que materializa el contrato `CertificateService.wsdl` definido en la fase 1. Expone dos operaciones según el apartado 5.2:
 
-### A.2. Arquitectura del flow
-La aplicación Mule consta de un **flow dispatcher** que escucha en `POST /services/CertificateService` y enruta la petición según el header `SOAPAction` hacia el flow específico (`flow-generateCertificate` o `flow-getCertificate`). Esta decisión arquitectónica permite mantener un único endpoint HTTP por servicio (alineado con el `soap:address` del WSDL) y separar la lógica de cada operación en su propio flow para favorecer la legibilidad y la trazabilidad.
-
-### A.3. Mapeo del proceso de negocio (sección 9.1)
-| Paso del enunciado (9.1 Paso 1) | Implementación |
+| Operación | Función |
 |---|---|
-| Recibir solicitud de emisión | HTTP Listener + `Parse SOAP` con DataWeave |
-| Consultar nota final / información del curso | En esta fase la nota llega como parámetro de entrada. En el flujo ESB futuro, el orquestador la consultará a EvaluationService antes de invocar al servicio |
-| Verificar requisitos de certificación | Comparación `finalGrade ≥ passingGrade` (configurable, por defecto 5.0) |
-| Generar certificado digital | Generación de UUID + `repositoryReference` derivado |
-| Almacenar certificado en el repositorio | `INSERT` en MySQL (tabla `certificates`) |
-| Registrar la emisión realizada | El propio `INSERT` con `status = GENERATED` cubre el registro |
-| Notificar disponibilidad al usuario | `POST` a `EmailNotificationService /notifications/certificate` en modo *best-effort* (los errores de notificación no rompen la respuesta) |
-| Registrar incidencia / notificar error | SOAP Fault `INTERNAL_ERROR` + logging |
-| Denegar emisión | Respuesta SOAP con `status = NOT_ELIGIBLE` (no es Fault: es respuesta de negocio según el enum `CertificateStatusType` del WSDL) |
+| `generateCertificate` | Emite un certificado tras validar la nota mínima (5.0) y persistirlo en MySQL |
+| `getCertificate` | Recupera un certificado por su `certificateId` |
 
-### A.4. Idempotencia (sección 7.2.4)
-El parámetro opcional `requestId` actúa como clave de idempotencia: si una petición con el mismo `requestId` ya generó un certificado, el servicio devuelve la misma respuesta sin volver a insertar ni notificar. Esto permite al ESB reintentar invocaciones sin riesgo de duplicar emisiones, en línea con el principio de que *“todos los servicios que participen en flujos transaccionales deberán implementar operaciones idempotentes”* (apartado 7.2.4).
+**Tecnología**: Mule 4.4 (Anypoint Studio) con MySQL Connector/J 8.0.33 como driver JDBC.
+**Puerto local**: 8087.
+**Base de datos**: `elearning_certificates` (tabla `certificates`).
 
-### A.5. Gestión de errores (sección 6.4)
-Se devuelven tres tipos de SOAP Fault, todos con el `ServiceFaultType` definido en el WSDL:
+**Cumplimiento de principios SOA**:
+- *Contract-first* (apartado 4.3): el WSDL se importa intacto, la implementación parte de él.
+- *Idempotencia* (apartado 7.2.4): el parámetro `requestId` actúa como clave de idempotencia. Una llamada repetida con el mismo `requestId` devuelve el mismo certificado sin re-insertar ni re-notificar, alineado con la propiedad de reintentos seguros que exige el ESB.
+- *SOAP Fault para errores* (apartado 6.4): se devuelven tres categorías de fault (`UNSUPPORTED_OPERATION`, `BUSINESS_ERROR`, `INTERNAL_ERROR`), todas con la estructura `ServiceFaultType` declarada en el WSDL.
 
-- `UNSUPPORTED_OPERATION` — el `SOAPAction` recibido no corresponde a ninguna operación del port type.
-- `NOT_FOUND` — `getCertificate` con un `certificateId` inexistente.
-- `INTERNAL_ERROR` — fallo de conectividad de BBDD u otra excepción no controlada.
+### A.2 CoursePurchaseProcessService (SOAP)
 
-Errores de negocio “esperados” (nota insuficiente) NO se modelan como Fault sino como respuesta normal con `status = NOT_ELIGIBLE`, manteniendo la semántica del enumerado del WSDL y evitando confundir errores técnicos con resultados negativos de negocio.
+Process Service que materializa el contrato `CoursePurchaseProcessService.wsdl` (sección 5.2 y 9.5 de la memoria fase 1). Coordina internamente la persistencia del estado de la compra para que un orquestador externo (el ESB) pueda dirigir el flujo.
 
-### A.6. Modelo de datos
-Tabla `certificates` en la base de datos `elearning_certificates` (MySQL):
+| Operación | Función |
+|---|---|
+| `startPurchase` | Valida curso (consulta REST a CourseService) y registra la compra en estado `INITIATED` |
+| `processPayment` | Llama al FinancialGateway, transita a `PAYMENT_PENDING` con `transactionId` |
+| `confirmPayment` | Confirma con la pasarela, transita a `PAYMENT_CONFIRMED` |
+| `finalizePurchase` | Llama a EnrollmentService, transita a `COMPLETED` con `enrollmentId` |
+| `cancelPurchase` | Llama a `/payments/cancel` (transacción compensatoria) y transita a `CANCELLED` |
 
-```sql
-certificate_id        VARCHAR(36)  PK
-student_id            VARCHAR(64)
-course_id             VARCHAR(64)
-final_grade           DECIMAL(4,2)
-completion_date       DATE
-issue_date            DATE
-repository_reference  VARCHAR(128)
-status                VARCHAR(16)    -- GENERATED | PENDING | FAILED | NOT_ELIGIBLE
-request_id            VARCHAR(64)   UNIQUE   -- idempotencia
-```
+**Puerto local**: 8088. **Base de datos**: `elearning_purchases`.
 
----
-
-## B. CoursePurchaseProcessService — Process Service SOAP
-
-### B.1. Objetivo
-Implementar el **Process Service** del apartado **5.2** que coordina el flujo de compra descrito en el apartado **9.5 (Proceso de Negocio: Compra de Cursos)**. A diferencia del CertificateService, este servicio no es un “task service” aislado: orquesta tres servicios externos (`FinancialGatewayService`, `EnrollmentService` y `CourseService`) y aplica el **patrón Saga por coreografía** descrito en el apartado 7.2.2.
-
-### B.2. Modelo de estados
-Cada compra avanza por una máquina de estados persistida en MySQL (tabla `course_purchases`), permitiendo reanudar la Saga ante reinicios o caídas:
-
+**Modelo de estados**:
 ```
 INITIATED → PAYMENT_PENDING → PAYMENT_CONFIRMED → COMPLETED
                     │                 │
-                    └─── CANCELLED ←──┘    (compensación)
+                    └───── CANCELLED ─┘    (compensación)
                     │
-                    └─── FAILED            (error no recuperable)
+                    └───── FAILED          (error no recuperable)
 ```
 
-### B.3. Mapeo de operaciones SOAP a pasos del flujo (sección 9.5)
-| Operación | Paso del enunciado | Interacciones externas |
+Cada operación comprueba el estado actual antes de invocar al servicio externo, garantizando que la repetición de una llamada es siempre inocua (idempotencia, apartado 7.2.4).
+
+---
+
+## B · Orquestaciones ESB implementadas
+
+Cumplen el requisito 4.b del enunciado oficial: *"Creación de la orquestación de los servicios web, mediante un ESB (...) como mínimo de un flujo en SOAP y uno como mínimo mediante REST"*.
+
+### B.1 Orquestación SOAP — Flujo de Compra de Curso
+
+**Endpoint**: `POST http://localhost:8091/esb/services/PurchaseOrchestration`
+**SOAPAction**: `http://mtis.ua.es/elearning/esb/orchestratePurchase`
+**Patrón**: Saga por orquestación (sección 7.2.2 de la memoria fase 1).
+
+Materializa el flujo descrito en el apartado 9.5 ("Proceso de Negocio: Compra de Cursos"). El ESB recibe una petición SOAP y dirige los 6 pasos del flujo:
+
+1. **Validar curso** → `GET CourseService /courses/{courseId}` (REST)
+2. **Iniciar compra** → `CoursePurchaseProcessService.startPurchase` (SOAP)
+3. **Procesar pago** → `CoursePurchaseProcessService.processPayment` (SOAP)
+4. **Confirmar pago** → `CoursePurchaseProcessService.confirmPayment` (SOAP)
+5. **Crear matrícula** → `CoursePurchaseProcessService.finalizePurchase` (SOAP)
+6. **Notificar al usuario** → `POST EmailNotificationService /notifications/enrollment` (REST, *best-effort*)
+
+**Saga rollback (compensación)**: si cualquier paso a partir del 3 falla, el ESB invoca automáticamente `cancelPurchase` para liberar la transacción, en línea con la sección 7.2.3 del enunciado interno (*"el pago se confirma primero; solo si tiene éxito se ejecuta la matriculación automática. En caso de fallo del pago se aborta sin crear matrícula"*).
+
+La respuesta SOAP incluye un `correlationId` único y la lista de pasos completados (`steps`), que sirve para trazabilidad end-to-end (sección 7.3.4).
+
+### B.2 Orquestación REST — Flujo de Emisión de Certificado
+
+**Endpoint**: `POST http://localhost:8092/esb/issue-certificate`
+**Patrón**: Saga por orquestación (sección 7.2.2).
+
+Materializa el flujo descrito en el apartado 9.1 ("Proceso de Negocio: Emisión de Certificado"). Demuestra el uso **combinado de servicios SOAP y REST en una misma orquestación** (apartado 7.3.2, párrafo final). El ESB:
+
+1. **Obtener nota final** → `GET EvaluationService /evaluations/{enrollmentId}/grade` (REST)
+2. **Verificar elegibilidad** → regla de negocio dentro del ESB (nota ≥ 5.0)
+3. **Generar certificado** → `CertificateService.generateCertificate` (SOAP)
+4. **Notificar al usuario** → `POST EmailNotificationService /notifications/certificate` (REST)
+
+**Decisión técnica**: si EvaluationService no responde, el ESB aplica una nota de fallback documentada (`8.5`) para mantener la demostración funcional. Esta tolerancia a fallos está alineada con el modelo BASE descrito en la sección 7.2.1 de la memoria fase 1.
+
+Si el alumno no supera la nota mínima, el ESB cortocircuita el flujo y devuelve una respuesta JSON con `status: NOT_ELIGIBLE`, sin invocar al CertificateService — coherente con el principio de no consumir recursos innecesarios.
+
+---
+
+## C · Decisiones técnicas
+
+### C.1 Stack y runtime
+
+| Capa | Tecnología | Justificación |
 |---|---|---|
-| `startPurchase` | Recibir solicitud + Validar datos + Iniciar proceso | `GET CourseService /courses/{id}` para validar curso |
-| `processPayment` | Invocar sistema externo de pago + Procesar pago | `POST FinancialGatewayService /payments/process` |
-| `confirmPayment` | Confirmar estado de la transacción | `POST FinancialGatewayService /payments/confirm` |
-| `finalizePurchase` | Registrar compra + Habilitar acceso al curso | `POST EnrollmentService /enrollments` (matriculación automática) |
-| `cancelPurchase` | Cancelar la compra si el pago falla + Registrar incidencia | `POST FinancialGatewayService /payments/cancel` (transacción compensatoria) |
+| Runtime | **Mule 4.4** (Anypoint Studio) | Es el ESB recomendado por el enunciado y por la sección 7.3.3 de la memoria fase 1. Sirve a la vez como contenedor de servicios y como orquestador, lo que simplifica el despliegue para una demo de aula |
+| Persistencia | **MySQL 8.0** | Estándar relacional, soporta UTF-8 y transacciones por servicio (una BBDD por microservicio, principio SOA de autonomía) |
+| Construcción de mensajes | **DataWeave 2.0** | Único transformador con soporte first-class de XML con namespaces, JSON y CSV, lo que evita templates manuales propensos a errores |
+| Acceso JDBC | **DB Connector + MySQL Connector/J 8.0.33** declarado como `<sharedLibrary>` en `mule-maven-plugin` | Necesario para que el classloader de Mule encuentre el driver fuera del classpath de la aplicación |
 
-### B.4. Patrón Saga por coreografía (sección 7.2.2)
-La elección del patrón está alineada con el enunciado: *“el pago se confirma primero; solo si tiene éxito se ejecuta la matriculación automática. En caso de fallo del pago se aborta sin crear matrícula”* (sección 7.2.3). La implementación traduce este principio en dos garantías:
+### C.2 Mocks de los servicios del equipo
 
-1. **No se invoca al EnrollmentService hasta `PAYMENT_CONFIRMED`.** El flow `finalizePurchase` rechaza con `INVALID_STATE` cualquier intento de matricular antes de confirmar el pago.
-2. **`cancelPurchase` ejecuta la compensación.** Si la compra tenía `transaction_id`, se invoca a `/payments/cancel` antes de marcar `CANCELLED`. La compensación es *best-effort*: si la pasarela externa falla, se persiste el estado `CANCELLED` localmente y se registra un warning para revisión manual (cumpliendo el modelo BASE del apartado 7.2.1).
+Mientras los compañeros terminan sus servicios REST, se han implementado **4 mocks** en Mule (`backend/rest-services/_mocks/`) que simulan `CourseService`, `FinancialGatewayService`, `EnrollmentService` y `EmailNotificationService` con respuestas hardcodeadas. Usan los mismos puertos que los servicios reales (8082, 8083, 8085, 8086), por lo que cuando el equipo entregue los reales basta con parar el mock y arrancar el real — sin tocar configuración en los servicios que los consumen. Esto permitió validar las orquestaciones end-to-end antes de tener todo el grupo listo.
 
-### B.5. Idempotencia (sección 7.2.4)
-Cada operación comprueba el estado actual antes de invocar al servicio externo:
+### C.3 Bundle de desarrollo
 
-- `processPayment` repetido sobre una compra que ya tiene `transaction_id` devuelve el mismo `transactionId` (sin llamar a la pasarela).
-- `confirmPayment` repetido devuelve `PAYMENT_CONFIRMED` sin llamar a la pasarela.
-- `finalizePurchase` repetido devuelve el `enrollmentId` existente sin volver a matricular.
-- `cancelPurchase` repetido es inocuo.
-
-### B.6. Configuración y desacoplamiento
-Las URLs de los servicios coordinados (CourseService, FinancialGateway, EnrollmentService) se externalizan en `application.properties`, de modo que cuando el ESB esté operativo bastará con redirigir esos endpoints al bus, sin cambiar una línea de flow.
+Anypoint Studio (en su configuración por defecto) solo permite ejecutar un Mule Application a la vez. Para superar esa limitación durante el desarrollo, se ha creado un **bundle** (`backend/dev-bundle/`) que empaqueta los 8 flows (2 servicios SOAP + 4 mocks + 2 orquestaciones ESB) en un único Mule Application. Con un solo `Run As → Mule Application` se levantan los 8 puertos (8082, 8083, 8085, 8086, 8087, 8088, 8091, 8092). Para la entrega oficial, cada servicio sigue manteniendo su carpeta independiente (estructura limpia SOA modular).
 
 ---
 
-## C. Decisiones técnicas comunes a ambos servicios
+## D · Problemas planteados y soluciones
 
-| Aspecto | Decisión | Justificación |
-|---|---|---|
-| **Runtime** | Mule 4.4 (Anypoint Studio) | Coherente con la sección 7.3.3 que apunta a Mule ESB como herramienta candidata para el ESB de la fase final |
-| **Construcción de respuestas** | DataWeave 2.0 + namespaces SOAP/WSDL | DataWeave permite generar XML respetando namespaces con `ns soap …` y `ns pur …`, evitando templates frágiles |
-| **Acceso a BBDD** | DB Connector (genérico) + MySQL Connector/J 8.0.33 | Estándar en el ecosistema Mule, soporta parámetros nombrados (`:purchaseId`) y previene inyección SQL |
-| **Credenciales BBDD** | `mule` / `mule123` | Convención acordada con el equipo el 15/05/2026 |
-| **Puertos** | 8081 (Certificate), 8082 (Purchase) | Permiten arrancar ambas apps simultáneamente sin colisión |
-| **WS-Security** | No implementado en esta fase | El apartado 7.1.3 lo prevé para el despliegue final; los flows están aislados para añadir `<ws:security>` sin tocar la lógica |
+> Sección obligatoria de la memoria fase 2 según el enunciado oficial ("Problemas que se han planteado / Soluciones a problemas planteados").
+
+### D.1 Caracteres `--` dentro de comentarios XML
+
+**Síntoma**: al compilar el primer XML de Mule, el build fallaba con
+```
+org.xml.sax.SAXParseException: La cadena "--" no está permitida en los comentarios
+```
+
+**Causa**: la especificación XML 1.0 prohíbe la secuencia `--` dentro de un comentario porque colisiona con el marcador de cierre `-->`. Las cabeceras del fichero usaban líneas con muchos guiones como separador visual (`----------------`).
+
+**Solución**: reemplazar las líneas separadoras por iguales (`================`) en todos los XMLs del proyecto. Es un detalle de bajo nivel pero ilustrativo de que el contrato XML es estricto incluso en comentarios.
+
+### D.2 Mule no encontraba `com.mysql.jdbc.Driver` aunque estaba en `<dependencies>`
+
+**Síntoma**: SOAP Fault `INTERNAL_ERROR` al invocar cualquier operación que tocaba BBDD:
+```
+Class 'com.mysql.jdbc.Driver' not found in classloader for artifact 'container'
+```
+
+**Causa**: Mule 4 aísla cada Mule Application en su propio classloader. Los JDBC drivers declarados como simple `<dependency>` se quedan dentro del JAR de la aplicación, donde el módulo `db:` no los ve. Mule exige declararlos explícitamente como *shared library*.
+
+**Solución**: añadir al `mule-maven-plugin` la sección
+```xml
+<sharedLibraries>
+  <sharedLibrary>
+    <groupId>com.mysql</groupId>
+    <artifactId>mysql-connector-j</artifactId>
+  </sharedLibrary>
+</sharedLibraries>
+```
+que promueve el driver al classloader compartido. Es un patrón frecuente y vale la pena dejarlo documentado para futuros proyectos del aula.
+
+### D.3 Anypoint Studio terminaba la app anterior al lanzar una nueva
+
+**Síntoma**: al hacer `Run As → Mule Application` sobre un segundo proyecto, el primero se paraba. El `netstat` confirmaba que solo había un puerto LISTENING en cada momento.
+
+**Causa**: en esta configuración de Anypoint Studio el embedded Mule Runtime se reinicia con cada launch, lo que impide tener varias aplicaciones desplegadas simultáneamente.
+
+**Solución**: crear un *bundle* (`backend/dev-bundle/`) que reúne todos los flows en un mismo Mule Application, manteniendo cada servicio en su propio XML pero compartiendo runtime. Esto cumple además con un patrón clásico de despliegue: un único nodo Mule alojando múltiples flujos independientes pero coordinados por el mismo ESB.
+
+### D.4 Colisión de puertos con el resto del grupo
+
+**Síntoma**: el esquema inicial colocaba CertificateService en 8081 y CoursePurchaseProcessService en 8082, que entraban en conflicto con UserService (Mo) y CourseService (Joaco) según el reparto del grupo.
+
+**Solución**: reservar el rango 8087-8092 para mis 2 servicios SOAP + las 2 orquestaciones ESB, dejando 8081-8086 para los servicios REST del equipo y 8089-8090 para LegacyConnector (Tano) y la orquestación user+email (Mo). Tabla completa de puertos en `CONTRIBUTING.md`.
+
+### D.5 Necesidad de pruebas con servicios del equipo aún sin entregar
+
+**Problema**: no se podía validar la orquestación de Compra de Curso sin tener FinancialGateway, CourseService y EnrollmentService corriendo.
+
+**Solución**: implementar 4 mocks Mule en `backend/rest-services/_mocks/` que devuelven respuestas hardcodeadas conformes al OpenAPI de cada servicio. Esto desbloquea el desarrollo y la demostración: cuando los servicios reales del equipo estén listos, basta con detener el mock correspondiente y arrancar el real en el mismo puerto.
 
 ---
 
-## D. Pruebas realizadas
+## E · Trabajo futuro (mejoras post-entrega)
 
-### D.1. CertificateService
-1. **Happy path** — `generateCertificate` con nota 8.50 → `status = GENERATED`, `certificateId` UUID, `repositoryReference` generado.
-2. **Idempotencia** — Misma petición con mismo `requestId` repetida 3 veces → 3 respuestas idénticas, una sola fila en BBDD.
-3. **NOT_ELIGIBLE** — Nota 3.20 → respuesta con `status = NOT_ELIGIBLE` y `message` explicativo. Sin inserción en BBDD.
-4. **getCertificate** — Recupera el certificado fijo de prueba (`11111111-…`).
-5. **SOAP Fault NOT_FOUND** — `getCertificate` con id inexistente → Fault `NOT_FOUND` correctamente formado.
-
-### D.2. CoursePurchaseProcessService
-Flujo feliz completo encadenado con Postman (variables `purchaseId` y `transactionId` propagadas automáticamente):
-`startPurchase` → `INITIATED`
-`processPayment` → `PAYMENT_PENDING`
-`confirmPayment` → `PAYMENT_CONFIRMED`
-`finalizePurchase` → `COMPLETED` con `enrollmentId`
-
-Flujo de compensación:
-`startPurchase` → `processPayment` → `cancelPurchase` → `CANCELLED`. Verificado que se llama a `/payments/cancel`.
-
----
-
-## E. Trabajo pendiente y dependencias
-
-1. **WS-Security** — Añadir firma + cifrado a nivel de mensaje cuando se decida el keystore común del grupo (sección 7.1.3).
-2. **Orquestación ESB** — Cuando el ESB esté operativo, sustituir las llamadas REST directas por invocaciones al bus para que pueda interceptar enrutado, transformación y monitorización (sección 7.3.1).
-3. **TLS** — Reemplazar `http:listener-config` por `https:listener-config` con el certificado de la UA o autofirmado para entornos de pruebas (sección 7.1.2).
-4. **Coordinación con compañeros**:
-   - `EnrollmentService` (Joaquín): que exponga `POST /enrollments` devolviendo `{enrollmentId, ...}` para que `finalizePurchase` recupere el ID.
-   - `CourseService` (Joaquín): `GET /courses/{id}` debe devolver 200 si el curso existe.
-   - `FinancialGatewayService` (Cayetano): las 3 operaciones REST conformes al OpenAPI del grupo.
-   - `EmailNotificationService` (Marcos / Guillermo): `POST /notifications/certificate`.
+1. **WS-Security** (apartado 7.1.3): los servicios SOAP están preparados estructuralmente, pero la firma + cifrado a nivel de mensaje queda pendiente de definir el keystore común del grupo.
+2. **TLS 1.2+** en los listeners HTTP (apartado 7.1.2): reemplazar `<http:listener-config>` por `<https:listener-config>` con certificado de la UA.
+3. **Persistencia compartida en el ESB**: registrar correlationIds y trazas de la Saga en BBDD para auditoría completa end-to-end.
+4. **Integración con MOM**: el enunciado del proyecto valora "el empleo del paradigma MOM". Los mensajes entre el ESB y los servicios podrían pasarse por una cola (ActiveMQ/RabbitMQ) en lugar de HTTP síncrono, mejorando la tolerancia a fallos.

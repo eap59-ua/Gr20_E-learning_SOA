@@ -1,0 +1,25 @@
+{
+  "minMuleVersion": "4.4.0",
+  "name": "gr20-dev-bundle",
+  "requiredProduct": "MULE",
+  "classLoaderModelLoaderDescriptor": {
+    "id": "mule",
+    "attributes": {
+      "exportedResources": []
+    }
+  },
+  "bundleDescriptorLoader": {
+    "id": "mule",
+    "attributes": {}
+  },
+  "configs": [
+    "certificate-service.xml",
+    "course-purchase-service.xml",
+    "mock-course-service.xml",
+    "mock-financial-gateway.xml",
+    "mock-enrollment-service.xml",
+    "mock-email-notification.xml",
+    "orchestration-soap-purchase.xml",
+    "orchestration-rest-certificate.xml"
+  ]
+}

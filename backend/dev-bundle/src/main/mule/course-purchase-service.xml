@@ -45,28 +45,28 @@
                               file="config/application.properties"/>
 
     <http:listener-config name="HTTP_Listener_config_pur" doc:id="http-pur">
-        <http:listener-connection host="${http.host}" port="${http.port}"/>
+        <http:listener-connection host="0.0.0.0" port="8088"/>
     </http:listener-config>
 
     <db:config name="MySQL_Config_pur" doc:id="db-pur">
-        <db:my-sql-connection host="${db.host}"
-                              port="${db.port}"
-                              user="${db.user}"
-                              password="${db.password}"
-                              database="${db.name}"/>
+        <db:my-sql-connection host="localhost"
+                              port="3306"
+                              user="mule"
+                              password="mule123"
+                              database="elearning_purchases"/>
     </db:config>
 
     <!-- Clientes REST hacia los 3 servicios coordinados -->
     <http:request-config name="Course_Config" doc:id="http-course">
-        <http:request-connection host="${course.host}" port="${course.port}"/>
+        <http:request-connection host="localhost" port="8082"/>
     </http:request-config>
 
     <http:request-config name="Payment_Config" doc:id="http-pay">
-        <http:request-connection host="${payment.host}" port="${payment.port}"/>
+        <http:request-connection host="localhost" port="8086"/>
     </http:request-config>
 
     <http:request-config name="Enrollment_Config" doc:id="http-enr">
-        <http:request-connection host="${enrollment.host}" port="${enrollment.port}"/>
+        <http:request-connection host="localhost" port="8083"/>
     </http:request-config>
 
     <!--
@@ -164,7 +164,7 @@ ns pur http://mtis.ua.es/elearning/purchase
 
         <try doc:name="Validate course">
             <http:request method="GET"
-                          path='#["${course.basePath}/courses/" ++ vars.req.courseId]'
+                          path='#["/api/v1/courses/" ++ vars.req.courseId]'
                           config-ref="Course_Config"
                           doc:name="GET /courses/{id}">
                 <http:response-validator>
@@ -324,7 +324,7 @@ output application/json
                 </ee:transform>
 
                 <http:request method="POST"
-                              path="${payment.basePath}/payments/process"
+                              path="/api/payments/process"
                               config-ref="Payment_Config"
                               doc:name="POST /payments/process">
                     <http:headers><![CDATA[#[{"Content-Type": "application/json"}]]]></http:headers>
@@ -451,7 +451,7 @@ output application/json
                 </ee:transform>
 
                 <http:request method="POST"
-                              path="${payment.basePath}/payments/confirm"
+                              path="/api/payments/confirm"
                               config-ref="Payment_Config"
                               doc:name="POST /payments/confirm">
                     <http:headers><![CDATA[#[{"Content-Type": "application/json"}]]]></http:headers>
@@ -558,7 +558,7 @@ output application/json
                 </ee:transform>
 
                 <http:request method="POST"
-                              path="${enrollment.basePath}/enrollments"
+                              path="/api/v1/enrollments"
                               config-ref="Enrollment_Config"
                               doc:name="POST /enrollments">
                     <http:headers><![CDATA[#[{"Content-Type": "application/json"}]]]></http:headers>
@@ -685,7 +685,7 @@ output application/json
                                 </ee:message>
                             </ee:transform>
                             <http:request method="POST"
-                                          path="${payment.basePath}/payments/cancel"
+                                          path="/api/payments/cancel"
                                           config-ref="Payment_Config"
                                           doc:name="POST /payments/cancel">
                                 <http:headers><![CDATA[#[{"Content-Type": "application/json"}]]]></http:headers>

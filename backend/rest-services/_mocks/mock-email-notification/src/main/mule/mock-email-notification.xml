@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  MOCK EmailNotificationService — para pruebas mientras Mo entrega el real.
+  Simula POST de envío de notificaciones. Puerto: 3005.
+  Esto evita el error 'best-effort' del CertificateService cuando intenta
+  notificar tras generar el certificado.
+  ============================================================================
+-->
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core
+        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/ee/core
+        http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/http
+        http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <http:listener-config name="HTTP_Listener_Email">
+        <http:listener-connection host="0.0.0.0" port="8085"/>
+    </http:listener-config>
+
+    <!-- POST /api/v1/notifications/email -->
+    <flow name="mock-notifications-email">
+        <http:listener config-ref="HTTP_Listener_Email"
+                       path="/api/v1/notifications/email" allowedMethods="POST"/>
+        <logger level="INFO" message='#["[MOCK EmailNotification] Email a " ++ (payload.to default "?") ++ ": " ++ (payload.subject default "?")]'/>
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ status: "sent", timestamp: now() as String }]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+    <!-- POST /api/v1/notifications/enrollment -->
+    <flow name="mock-notifications-enrollment">
+        <http:listener config-ref="HTTP_Listener_Email"
+                       path="/api/v1/notifications/enrollment" allowedMethods="POST"/>
+        <logger level="INFO" message='#["[MOCK EmailNotification] Matrícula notificada para user " ++ (payload.userId default "?")]'/>
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ status: "sent", timestamp: now() as String }]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+    <!-- POST /api/v1/notifications/certificate -->
+    <flow name="mock-notifications-certificate">
+        <http:listener config-ref="HTTP_Listener_Email"
+                       path="/api/v1/notifications/certificate" allowedMethods="POST"/>
+        <logger level="INFO" message='#["[MOCK EmailNotification] Certificado " ++ (payload.certificateId default "?") ++ " notificado a user " ++ (payload.userId default "?")]'/>
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ status: "sent", timestamp: now() as String }]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+</mule>

@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  MOCK FinancialGatewayService — para pruebas de integración hasta que
+  Tano entregue el real. Simula las 3 operaciones REST con respuestas
+  hardcodeadas. Puerto: 3001.
+  ============================================================================
+-->
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core
+        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/ee/core
+        http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/http
+        http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <http:listener-config name="HTTP_Listener_Financial">
+        <http:listener-connection host="0.0.0.0" port="8086"/>
+    </http:listener-config>
+
+    <!-- POST /api/payments/process -->
+    <flow name="mock-payments-process">
+        <http:listener config-ref="HTTP_Listener_Financial"
+                       path="/api/payments/process" allowedMethods="POST"/>
+        <logger level="INFO" message='#["[MOCK FinancialGateway] /payments/process " ++ write(payload, "application/json")]'/>
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+---
+{
+  paymentId:     payload.paymentId default uuid(),
+  transactionId: "TXN-" ++ (uuid()[0 to 7]),
+  status:        "PENDING",
+  timestamp:     now() as String
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+    <!-- POST /api/payments/confirm -->
+    <flow name="mock-payments-confirm">
+        <http:listener config-ref="HTTP_Listener_Financial"
+                       path="/api/payments/confirm" allowedMethods="POST"/>
+        <logger level="INFO" message='#["[MOCK FinancialGateway] /payments/confirm " ++ write(payload, "application/json")]'/>
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  paymentId:     payload.paymentId,
+  transactionId: payload.transactionId,
+  status:        "CONFIRMED",
+  timestamp:     now() as String
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+    <!-- POST /api/payments/cancel -->
+    <flow name="mock-payments-cancel">
+        <http:listener config-ref="HTTP_Listener_Financial"
+                       path="/api/payments/cancel" allowedMethods="POST"/>
+        <logger level="INFO" message='#["[MOCK FinancialGateway] /payments/cancel " ++ write(payload, "application/json")]'/>
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  paymentId: payload.paymentId,
+  status:    "CANCELLED",
+  reason:    payload.reason default "n/a",
+  timestamp: now() as String
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+</mule>

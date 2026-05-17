@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  MOCK CourseService — para pruebas mientras Joaco entrega el real.
+  Simula GET /api/v1/courses/{courseId}. Puerto: 3002.
+  ============================================================================
+-->
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core
+        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/ee/core
+        http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/http
+        http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <http:listener-config name="HTTP_Listener_Course">
+        <http:listener-connection host="0.0.0.0" port="8082"/>
+    </http:listener-config>
+
+    <!-- GET /api/v1/courses/{courseId} -->
+    <flow name="mock-courses-get">
+        <http:listener config-ref="HTTP_Listener_Course"
+                       path="/api/v1/courses/{courseId}" allowedMethods="GET"/>
+        <logger level="INFO" message='#["[MOCK CourseService] GET /courses/" ++ (attributes.uriParams.courseId default "?")]'/>
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  id:              attributes.uriParams.courseId,
+  title:           "Integración de Sistemas Software",
+  description:     "Curso completo sobre SOA, servicios web y BPM",
+  instructorId:    "INS-001",
+  instructorName:  "Prof. García",
+  category:        "Ingeniería del Software",
+  durationHours:   60,
+  price:           49.99,
+  currency:        "EUR",
+  active:          true,
+  createdAt:       "2026-01-15T10:00:00Z",
+  updatedAt:       "2026-05-01T10:00:00Z"
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+    <!-- GET /api/v1/courses -->
+    <flow name="mock-courses-list">
+        <http:listener config-ref="HTTP_Listener_Course"
+                       path="/api/v1/courses" allowedMethods="GET"/>
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  data: [
+    { id: "COURSE-MTIS-2026",   title: "Integración de Sistemas Software", price: 49.99, currency: "EUR", active: true },
+    { id: "COURSE-WEB-2026",    title: "Desarrollo Web Avanzado",          price: 39.99, currency: "EUR", active: true },
+    { id: "COURSE-CLOUD-2026",  title: "Cloud Computing",                   price: 59.99, currency: "EUR", active: true }
+  ],
+  total: 3,
+  page:  1
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+</mule>

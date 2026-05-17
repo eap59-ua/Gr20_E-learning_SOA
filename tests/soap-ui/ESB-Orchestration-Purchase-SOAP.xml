@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ESB Orchestration: Compra de Curso (SOAP)
+  =========================================
+  Endpoint:    POST http://localhost:8091/esb/services/PurchaseOrchestration
+  SOAPAction:  http://mtis.ua.es/elearning/esb/orchestratePurchase
+  Content-Type: text/xml; charset=UTF-8
+
+  Cumple el requisito enunciado 4.b: flujo SOAP orquestado por ESB.
+-->
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:esb="http://mtis.ua.es/elearning/esb">
+   <soap:Header/>
+   <soap:Body>
+      <esb:orchestratePurchaseRequest>
+         <esb:userId>STU-0042</esb:userId>
+         <esb:courseId>COURSE-MTIS-2026</esb:courseId>
+         <esb:paymentMethod>CARD</esb:paymentMethod>
+      </esb:orchestratePurchaseRequest>
+   </soap:Body>
+</soap:Envelope>

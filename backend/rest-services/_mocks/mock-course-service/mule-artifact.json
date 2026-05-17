@@ -1,0 +1,14 @@
+{
+  "minMuleVersion": "4.4.0",
+  "name": "mock-course-service",
+  "requiredProduct": "MULE",
+  "classLoaderModelLoaderDescriptor": {
+    "id": "mule",
+    "attributes": { "exportedResources": [] }
+  },
+  "bundleDescriptorLoader": {
+    "id": "mule",
+    "attributes": {}
+  },
+  "configs": [ "mock-course-service.xml" ]
+}
