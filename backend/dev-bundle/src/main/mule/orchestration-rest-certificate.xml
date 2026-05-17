@@ -279,26 +279,66 @@ ns cer http://mtis.ua.es/elearning/certificates
                 "SOAPAction":   "http://mtis.ua.es/elearning/certificates/generateCertificate"
             }]]]></http:headers>
         </http:request>
-        <ee:transform doc:name="Extract certificateId + status">
+        <ee:transform doc:name="Extract certificateId + status (defensive)">
             <ee:variables>
-                <ee:set-variable variableName="certificateId"><![CDATA[%dw 2.0
+                <ee:set-variable variableName="certResp"><![CDATA[%dw 2.0
 output application/java
 ns soap http://schemas.xmlsoap.org/soap/envelope/
 ns cer http://mtis.ua.es/elearning/certificates
 ---
-(payload.soap#Envelope.soap#Body.cer#generateCertificateResponse.cer#certificateId) as String]]></ee:set-variable>
-                <ee:set-variable variableName="certStatus"><![CDATA[%dw 2.0
+payload.soap#Envelope.soap#Body.cer#generateCertificateResponse]]></ee:set-variable>
+                <ee:set-variable variableName="certFault"><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+---
+payload.soap#Envelope.soap#Body.soap#Fault]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+        <choice doc:name="¿Hubo Fault en CertificateService?">
+            <when expression="#[vars.certFault != null]">
+                <ee:transform>
+                    <ee:variables>
+                        <ee:set-variable variableName="certificateId"><![CDATA[%dw 2.0
+output application/java
+---
+"NO-CERT-ID"]]></ee:set-variable>
+                        <ee:set-variable variableName="certStatus"><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+---
+"CERT_SERVICE_FAULT: " ++ ((payload.soap#Envelope.soap#Body.soap#Fault.faultstring default "unknown") as String)]]></ee:set-variable>
+                        <ee:set-variable variableName="steps"><![CDATA[%dw 2.0
+output application/java
+---
+vars.steps ++ ["certificate-fault"]]]></ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+                <raise-error type="APP:CERT_FAULT"
+                             description="#[vars.certStatus default 'Certificate service returned a Fault']"/>
+            </when>
+            <otherwise>
+                <ee:transform>
+                    <ee:variables>
+                        <ee:set-variable variableName="certificateId"><![CDATA[%dw 2.0
 output application/java
 ns soap http://schemas.xmlsoap.org/soap/envelope/
 ns cer http://mtis.ua.es/elearning/certificates
 ---
-(payload.soap#Envelope.soap#Body.cer#generateCertificateResponse.cer#status) as String]]></ee:set-variable>
-                <ee:set-variable variableName="steps"><![CDATA[%dw 2.0
+((payload.soap#Envelope.soap#Body.cer#generateCertificateResponse.cer#certificateId) default "NO-CERT-ID") as String]]></ee:set-variable>
+                        <ee:set-variable variableName="certStatus"><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns cer http://mtis.ua.es/elearning/certificates
+---
+((payload.soap#Envelope.soap#Body.cer#generateCertificateResponse.cer#status) default "UNKNOWN") as String]]></ee:set-variable>
+                        <ee:set-variable variableName="steps"><![CDATA[%dw 2.0
 output application/java
 ---
 vars.steps ++ ["certificate-generated"]]]></ee:set-variable>
-            </ee:variables>
-        </ee:transform>
+                    </ee:variables>
+                </ee:transform>
+            </otherwise>
+        </choice>
     </sub-flow>
 
     <!--
