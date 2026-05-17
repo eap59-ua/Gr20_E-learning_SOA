@@ -248,12 +248,12 @@ ns cer http://mtis.ua.es/elearning/certificates
 output application/java
 import * from dw::Runtime
 import * from dw::core::Strings
-var uuid = uuid()
+var newUuid = uuid()
 ---
 {
-  certificateId:       uuid,
+  certificateId:       newUuid,
   repositoryReference: (p('certificate.repositoryPrefix') default "REPO-CERT-")
-                       ++ (uuid[0 to 7]),
+                       ++ (newUuid[0 to 7]),
   issueDate:           now() as String { format: "yyyy-MM-dd" }
 }]]></ee:set-variable>
                             </ee:variables>

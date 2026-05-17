@@ -305,8 +305,12 @@ output application/java
                         <ee:set-variable variableName="certStatus"><![CDATA[%dw 2.0
 output application/java
 ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns cer http://mtis.ua.es/elearning/certificates
+var fault = payload.soap#Envelope.soap#Body.soap#Fault
+var detailMsg = fault.detail.cer#ServiceFault.cer#message
 ---
-"CERT_SERVICE_FAULT: " ++ ((payload.soap#Envelope.soap#Body.soap#Fault.faultstring default "unknown") as String)]]></ee:set-variable>
+"CERT_SERVICE_FAULT: " ++ ((fault.faultstring default "unknown") as String)
+ ++ " | detail: " ++ ((detailMsg default "no-detail") as String)]]></ee:set-variable>
                         <ee:set-variable variableName="steps"><![CDATA[%dw 2.0
 output application/java
 ---
