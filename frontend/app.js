@@ -103,6 +103,221 @@ function switchTab(tab) {
 
     if (tab === "enrollments") renderEnrollments();
     if (tab === "certificates") renderCertificates();
+    if (tab === "explorer") renderExplorer();
+}
+
+/* ----------------------------------------------------------------------- API EXPLORER */
+const apiCatalog = [
+    {
+        group: "👤 UserService (Mo · 8081)",
+        ops: [
+            { id: "user-list",    label: "Listar usuarios",       method: "GET",  path: "/api/svc/users",            body: null },
+            { id: "user-create",  label: "Crear usuario",         method: "POST", path: "/api/svc/users",            body: { name: "Alumno Demo", email: "demo@alu.ua.es", password: "demo1234", role: "STUDENT" } },
+            { id: "user-get",     label: "Consultar usuario",     method: "GET",  path: "/api/svc/users/{userId}",   body: null, params: { userId: "STU-0042" } },
+            { id: "user-update",  label: "Modificar usuario",     method: "PUT",  path: "/api/svc/users/{userId}",   body: { name: "Nombre Actualizado" }, params: { userId: "STU-0042" } },
+            { id: "user-delete",  label: "Eliminar usuario",      method: "DELETE", path: "/api/svc/users/{userId}", body: null, params: { userId: "STU-OBSOLETO" } },
+            { id: "user-login",   label: "Login (autenticación)", method: "POST", path: "/api/svc/users/login",      body: { email: "demo@alu.ua.es", password: "demo1234" } }
+        ]
+    },
+    {
+        group: "📚 CourseService (Joaco · 8082)",
+        ops: [
+            { id: "course-list",   label: "Listar cursos",          method: "GET",  path: "/api/svc/courses",                body: null },
+            { id: "course-get",    label: "Consultar curso",        method: "GET",  path: "/api/svc/courses/{courseId}",     body: null, params: { courseId: "COURSE-MTIS-2026" } },
+            { id: "course-create", label: "Crear curso",            method: "POST", path: "/api/svc/courses",                body: { title: "Curso Demo", category: "Pruebas", durationHours: 30, price: 19.99 } },
+            { id: "course-update", label: "Actualizar curso",       method: "PUT",  path: "/api/svc/courses/{courseId}",     body: { price: 29.99 }, params: { courseId: "COURSE-MTIS-2026" } },
+            { id: "course-delete", label: "Eliminar curso",         method: "DELETE", path: "/api/svc/courses/{courseId}",   body: null, params: { courseId: "COURSE-OBSOLETO" } }
+        ]
+    },
+    {
+        group: "🎒 EnrollmentService (Joaco · 8083)",
+        ops: [
+            { id: "enr-create",   label: "Matricular usuario en curso", method: "POST",   path: "/api/svc/enrollments",                  body: { userId: "STU-0042", courseId: "COURSE-MTIS-2026" } },
+            { id: "enr-get",      label: "Consultar matrícula",         method: "GET",    path: "/api/svc/enrollments/{enrollmentId}",   body: null, params: { enrollmentId: "ENR-12345678" } },
+            { id: "enr-delete",   label: "Cancelar matrícula",          method: "DELETE", path: "/api/svc/enrollments/{enrollmentId}",   body: null, params: { enrollmentId: "ENR-12345678" } }
+        ]
+    },
+    {
+        group: "📝 EvaluationService (Marcos · 8084)",
+        ops: [
+            { id: "eval-questions", label: "Obtener preguntas",  method: "GET",  path: "/api/svc/evaluations/{courseId}/questions", body: null, params: { courseId: "COURSE-MTIS-2026" } },
+            { id: "eval-submit",    label: "Enviar respuestas",  method: "POST", path: "/api/svc/evaluations/answers",              body: { enrollmentId: "ENR-12345678", answers: [{ questionId: "Q1", answer: "B" }, { questionId: "Q2", answer: "A" }] } },
+            { id: "eval-grade",     label: "Calcular nota",      method: "POST", path: "/api/svc/evaluations/calculate-grade",      body: { enrollmentId: "ENR-12345678" } },
+            { id: "eval-get",       label: "Consultar nota",     method: "GET",  path: "/api/svc/evaluations/{enrollmentId}/grade", body: null, params: { enrollmentId: "ENR-12345678" } }
+        ]
+    },
+    {
+        group: "✉️ EmailNotificationService (Mo · 8085)",
+        ops: [
+            { id: "email-generic",     label: "Enviar email",                  method: "POST", path: "/api/svc/notifications/email",        body: { to: "demo@alu.ua.es", subject: "Hola", body: "Cuerpo del correo" } },
+            { id: "email-enrollment",  label: "Notificación matrícula",        method: "POST", path: "/api/svc/notifications/enrollment",   body: { userId: "STU-0042", courseId: "COURSE-MTIS-2026", email: "demo@alu.ua.es" } },
+            { id: "email-certificate", label: "Notificación certificado",      method: "POST", path: "/api/svc/notifications/certificate",  body: { userId: "STU-0042", certificateId: "11111111-1111-1111-1111-111111111111", email: "demo@alu.ua.es" } }
+        ]
+    },
+    {
+        group: "💳 FinancialGatewayService (Tano · 8086)",
+        ops: [
+            { id: "pay-process", label: "Procesar pago",  method: "POST", path: "/api/svc/payments/process", body: { paymentId: "PAY-001", userId: "STU-0042", amount: 49.99, currency: "EUR", description: "Curso MTIS" } },
+            { id: "pay-confirm", label: "Confirmar pago", method: "POST", path: "/api/svc/payments/confirm", body: { paymentId: "PAY-001", transactionId: "TXN-12345" } },
+            { id: "pay-cancel",  label: "Cancelar pago",  method: "POST", path: "/api/svc/payments/cancel",  body: { paymentId: "PAY-001", reason: "USER_REQUEST" } }
+        ]
+    },
+    {
+        group: "📜 CertificateService SOAP (Erardo · 8087, vía gateway)",
+        ops: [
+            { id: "cert-get",    label: "Consultar certificado (SOAP→JSON)", method: "GET",  path: "/api/certificates/{certificateId}", body: null, params: { certificateId: "11111111-1111-1111-1111-111111111111" } },
+            { id: "cert-issue",  label: "Emitir certificado (orquestación ESB REST)", method: "POST", path: "/api/issue-certificate", body: { studentId: "STU-0042", courseId: "COURSE-MTIS-2026", enrollmentId: "ENR-12345678" } }
+        ]
+    },
+    {
+        group: "🛒 CoursePurchase (Erardo · ESB SOAP 8091)",
+        ops: [
+            { id: "purchase-full", label: "Comprar curso (Saga ESB completa)", method: "POST", path: "/api/buy-course", body: { userId: "STU-0042", courseId: "COURSE-MTIS-2026", paymentMethod: "CARD" } }
+        ]
+    }
+];
+
+let explorerCurrentOp = null;
+
+function renderExplorer() {
+    const cat = document.getElementById("explorer-catalog");
+    if (cat.children.length > 0) return; // ya renderizado
+    cat.innerHTML = apiCatalog.map(group => `
+        <div class="mb-3">
+            <p class="font-semibold text-xs text-slate-700 mt-3 mb-1 sticky top-0 bg-white py-1">${escapeHtml(group.group)}</p>
+            ${group.ops.map(op => `
+                <button class="explorer-op-btn w-full text-left px-2 py-1.5 rounded text-sm hover:bg-indigo-50 transition flex items-center space-x-2"
+                        data-op-id="${escapeHtml(op.id)}">
+                    <span class="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded ${methodColor(op.method)}">${op.method}</span>
+                    <span class="flex-1">${escapeHtml(op.label)}</span>
+                </button>
+            `).join("")}
+        </div>
+    `).join("");
+
+    document.querySelectorAll(".explorer-op-btn").forEach(btn => {
+        btn.addEventListener("click", () => selectExplorerOp(btn.dataset.opId));
+    });
+    document.getElementById("explorer-execute").addEventListener("click", executeExplorerOp);
+}
+
+function methodColor(m) {
+    switch (m) {
+        case "GET":    return "bg-emerald-100 text-emerald-700";
+        case "POST":   return "bg-indigo-100 text-indigo-700";
+        case "PUT":    return "bg-amber-100 text-amber-700";
+        case "DELETE": return "bg-red-100 text-red-700";
+        default:       return "bg-slate-100 text-slate-700";
+    }
+}
+
+function findOpById(id) {
+    for (const g of apiCatalog) {
+        const op = g.ops.find(o => o.id === id);
+        if (op) return op;
+    }
+    return null;
+}
+
+function selectExplorerOp(id) {
+    const op = findOpById(id);
+    if (!op) return;
+    explorerCurrentOp = op;
+
+    document.getElementById("explorer-op-header").classList.add("hidden");
+    document.getElementById("explorer-op-body").classList.remove("hidden");
+
+    const badge = document.getElementById("explorer-method-badge");
+    badge.textContent = op.method;
+    badge.className = `font-mono text-xs font-bold px-2 py-1 rounded ${methodColor(op.method)}`;
+    document.getElementById("explorer-url").textContent = op.path;
+    document.getElementById("explorer-description").textContent = op.label;
+
+    // Parámetros de URL
+    const paramsSection = document.getElementById("explorer-params-section");
+    const paramsBox = document.getElementById("explorer-params");
+    if (op.params) {
+        paramsSection.classList.remove("hidden");
+        paramsBox.innerHTML = Object.entries(op.params).map(([k, v]) => `
+            <div class="flex items-center space-x-2">
+                <label class="text-xs font-mono text-slate-600 w-32 truncate">${escapeHtml(k)}</label>
+                <input type="text" data-param="${escapeHtml(k)}" value="${escapeHtml(String(v))}"
+                       class="flex-1 px-2 py-1 border border-slate-300 rounded text-xs"/>
+            </div>
+        `).join("");
+    } else {
+        paramsSection.classList.add("hidden");
+        paramsBox.innerHTML = "";
+    }
+
+    // Body
+    const bodySection = document.getElementById("explorer-body-section");
+    const bodyArea = document.getElementById("explorer-body");
+    if (op.body !== null && op.method !== "GET" && op.method !== "DELETE") {
+        bodySection.classList.remove("hidden");
+        bodyArea.value = JSON.stringify(op.body, null, 2);
+    } else {
+        bodySection.classList.add("hidden");
+        bodyArea.value = "";
+    }
+
+    // Limpiar resultado anterior
+    document.getElementById("explorer-result-card").classList.add("hidden");
+}
+
+async function executeExplorerOp() {
+    if (!explorerCurrentOp) return;
+    const op = explorerCurrentOp;
+
+    // Resolver parámetros de URL
+    let url = op.path;
+    document.querySelectorAll("[data-param]").forEach(input => {
+        const k = input.dataset.param;
+        const v = encodeURIComponent(input.value);
+        url = url.replace(`{${k}}`, v);
+    });
+    const fullUrl = `http://localhost:8094${url}`;
+
+    const opts = {
+        method: op.method,
+        headers: {}
+    };
+    if (op.method !== "GET" && op.method !== "DELETE") {
+        const bodyStr = document.getElementById("explorer-body").value;
+        if (bodyStr.trim()) {
+            try {
+                JSON.parse(bodyStr); // validar
+                opts.headers["Content-Type"] = "application/json";
+                opts.body = bodyStr;
+            } catch (e) {
+                showExplorerResult(null, "ERROR — JSON inválido en el body: " + e.message);
+                return;
+            }
+        }
+    }
+
+    const startTime = Date.now();
+    try {
+        const res = await fetch(fullUrl, opts);
+        const elapsed = Date.now() - startTime;
+        const text = await res.text();
+        let parsed = text;
+        try { parsed = JSON.stringify(JSON.parse(text), null, 2); } catch (e) {}
+        showExplorerResult(res.status, `${res.status} ${res.statusText} · ${elapsed} ms`, parsed);
+    } catch (err) {
+        showExplorerResult(0, `ERROR DE RED · ${err.message}`);
+    }
+}
+
+function showExplorerResult(status, statusLabel, body) {
+    document.getElementById("explorer-result-card").classList.remove("hidden");
+    const statusEl = document.getElementById("explorer-result-status");
+    statusEl.textContent = statusLabel;
+    statusEl.className = "text-xs font-mono " +
+        (status && status >= 200 && status < 300 ? "text-emerald-700" :
+         status && status >= 400 ? "text-red-700" :
+         "text-slate-600");
+    document.getElementById("explorer-result-body").textContent = body || "(sin cuerpo)";
 }
 
 /* ----------------------------------------------------------------------- COURSES */

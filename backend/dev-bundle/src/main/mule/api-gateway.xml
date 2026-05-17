@@ -53,6 +53,29 @@
         <http:request-connection host="localhost" port="8092"/>
     </http:request-config>
 
+    <!-- Clientes hacia el resto de servicios del equipo (para el Explorador de Servicios) -->
+    <http:request-config name="Gateway_Client_User">
+        <http:request-connection host="localhost" port="8081"/>
+    </http:request-config>
+    <http:request-config name="Gateway_Client_Enrollment">
+        <http:request-connection host="localhost" port="8083"/>
+    </http:request-config>
+    <http:request-config name="Gateway_Client_Evaluation">
+        <http:request-connection host="localhost" port="8084"/>
+    </http:request-config>
+    <http:request-config name="Gateway_Client_Email">
+        <http:request-connection host="localhost" port="8085"/>
+    </http:request-config>
+    <http:request-config name="Gateway_Client_Payment">
+        <http:request-connection host="localhost" port="8086"/>
+    </http:request-config>
+    <http:request-config name="Gateway_Client_Purchase">
+        <http:request-connection host="localhost" port="8088"/>
+    </http:request-config>
+    <http:request-config name="Gateway_Client_Legacy">
+        <http:request-connection host="localhost" port="8089"/>
+    </http:request-config>
+
     <!--
       ========================================================================
       CORS preflight: responde a TODOS los OPTIONS con 204 y las cabeceras
@@ -432,4 +455,152 @@ else
         </ee:transform>
     </flow>
 
+    <!--
+      ============================================================================
+      EXPLORADOR DE SERVICIOS — Endpoints proxy genéricos
+      ============================================================================
+      Cada proxy reenvía la petición del frontend al servicio real sin tocar
+      cuerpo ni cabeceras importantes. Añade CORS en la respuesta.
+      Ruta: POST/GET/PUT/DELETE /api/svc/{servicio}/{resto-del-path}
+      ============================================================================
+    -->
+
+    <flow name="api-proxy-user-service">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/users/*" allowedMethods="GET, POST, PUT, DELETE">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="500">
+                <http:headers><![CDATA[#[output application/java
+---
+{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/users") replace "/api/svc/users" with "/api/v1/users"]'/>
+        <http:request method='#[attributes.method default "GET"]' path="#[vars.downstreamPath]" config-ref="Gateway_Client_User">
+            <http:response-validator><http:success-status-code-validator values="0..599"/></http:response-validator>
+        </http:request>
+        <error-handler>
+            <on-error-continue type="ANY">
+                <ee:transform><ee:message><ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ status: "PROXY_ERROR", target: "UserService:8081", message: error.description default "?" }]]></ee:set-payload></ee:message></ee:transform>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <flow name="api-proxy-enrollment-service">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/enrollments/*" allowedMethods="GET, POST, PUT, DELETE">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+            </http:response>
+        </http:listener>
+        <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/enrollments") replace "/api/svc/enrollments" with "/api/v1/enrollments"]'/>
+        <http:request method='#[attributes.method default "GET"]' path="#[vars.downstreamPath]" config-ref="Gateway_Client_Enrollment">
+            <http:response-validator><http:success-status-code-validator values="0..599"/></http:response-validator>
+        </http:request>
+        <error-handler>
+            <on-error-continue type="ANY">
+                <ee:transform><ee:message><ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ status: "PROXY_ERROR", target: "EnrollmentService:8083", message: error.description default "?" }]]></ee:set-payload></ee:message></ee:transform>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <flow name="api-proxy-evaluation-service">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/evaluations/*" allowedMethods="GET, POST, PUT, DELETE">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+            </http:response>
+        </http:listener>
+        <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/evaluations") replace "/api/svc/evaluations" with "/api/v1/evaluations"]'/>
+        <http:request method='#[attributes.method default "GET"]' path="#[vars.downstreamPath]" config-ref="Gateway_Client_Evaluation">
+            <http:response-validator><http:success-status-code-validator values="0..599"/></http:response-validator>
+        </http:request>
+        <error-handler>
+            <on-error-continue type="ANY">
+                <ee:transform><ee:message><ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ status: "PROXY_ERROR", target: "EvaluationService:8084", message: error.description default "?" }]]></ee:set-payload></ee:message></ee:transform>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <flow name="api-proxy-email-service">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/notifications/*" allowedMethods="GET, POST, PUT, DELETE">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+            </http:response>
+        </http:listener>
+        <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/notifications") replace "/api/svc/notifications" with "/api/v1/notifications"]'/>
+        <http:request method='#[attributes.method default "POST"]' path="#[vars.downstreamPath]" config-ref="Gateway_Client_Email">
+            <http:response-validator><http:success-status-code-validator values="0..599"/></http:response-validator>
+        </http:request>
+        <error-handler>
+            <on-error-continue type="ANY">
+                <ee:transform><ee:message><ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ status: "PROXY_ERROR", target: "EmailNotification:8085", message: error.description default "?" }]]></ee:set-payload></ee:message></ee:transform>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <flow name="api-proxy-payment-service">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/payments/*" allowedMethods="GET, POST, PUT, DELETE">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+            </http:response>
+        </http:listener>
+        <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/payments") replace "/api/svc/payments" with "/api/payments"]'/>
+        <http:request method='#[attributes.method default "POST"]' path="#[vars.downstreamPath]" config-ref="Gateway_Client_Payment">
+            <http:response-validator><http:success-status-code-validator values="0..599"/></http:response-validator>
+        </http:request>
+        <error-handler>
+            <on-error-continue type="ANY">
+                <ee:transform><ee:message><ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ status: "PROXY_ERROR", target: "FinancialGateway:8086", message: error.description default "?" }]]></ee:set-payload></ee:message></ee:transform>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <flow name="api-proxy-course-service">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/courses/*" allowedMethods="GET, POST, PUT, DELETE">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+            </http:response>
+        </http:listener>
+        <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/courses") replace "/api/svc/courses" with "/api/v1/courses"]'/>
+        <http:request method='#[attributes.method default "GET"]' path="#[vars.downstreamPath]" config-ref="Gateway_Client_Course">
+            <http:response-validator><http:success-status-code-validator values="0..599"/></http:response-validator>
+        </http:request>
+        <error-handler>
+            <on-error-continue type="ANY">
+                <ee:transform><ee:message><ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ status: "PROXY_ERROR", target: "CourseService:8082", message: error.description default "?" }]]></ee:set-payload></ee:message></ee:transform>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
 </mule>
+
