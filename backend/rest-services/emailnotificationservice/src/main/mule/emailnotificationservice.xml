@@ -1,19 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+<mule xmlns:sockets="http://www.mulesoft.org/schema/mule/sockets"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
       xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
       xmlns:db="http://www.mulesoft.org/schema/mule/db"
       xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
       xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
       xmlns:email="http://www.mulesoft.org/schema/mule/email"
       xmlns:http="http://www.mulesoft.org/schema/mule/http"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xsi:schemaLocation="
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
         http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
         http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
         http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd
         http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
         http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
-        http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd">
+        http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd
+http://www.mulesoft.org/schema/mule/sockets http://www.mulesoft.org/schema/mule/sockets/current/mule-sockets.xsd">
 
     <!-- ==================== CONFIGURACIÓN GLOBAL ==================== -->
 
@@ -44,16 +45,16 @@
     <!-- ==================== FLUJO PRINCIPAL ==================== -->
 
     <flow name="EmailNotificationService-main">
-        <http:listener config-ref="EmailNotificationService-httpListenerConfig" path="/api/*">
+        <http:listener config-ref="EmailNotificationService-httpListenerConfig" path="/api/v1/*">
             <http:response statusCode="#[vars.httpStatus default 200]">
-                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
             </http:response>
             <http:error-response statusCode="#[vars.httpStatus default 500]">
-                <http:body>#[payload]</http:body>
-                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
             </http:error-response>
         </http:listener>
-        <apikit:router config-ref="EmailNotificationService-config" />
+		<apikit:router config-ref="EmailNotificationService-config" />
         <error-handler>
             <on-error-propagate type="APIKIT:BAD_REQUEST">
                 <ee:transform doc:name="Transform Message">
@@ -185,7 +186,7 @@ java!java::util::UUID::randomUUID() as String]]></ee:set-variable>
             </ee:variables>
         </ee:transform>
         <!-- Enviar email via SMTP -->
-        <email:send config-ref="SMTP_Config" doc:name="Enviar email"
+		<email:send config-ref="SMTP_Config" doc:name="Enviar email"
                     subject="#[vars.body.subject]"
                     fromAddress="noreply@elearning.ua.es">
             <email:to-addresses>
@@ -196,7 +197,7 @@ java!java::util::UUID::randomUUID() as String]]></ee:set-variable>
             </email:body>
         </email:send>
         <!-- Registrar en email_log -->
-        <db:insert doc:name="Registrar en email_log" config-ref="Database_Config">
+		<db:insert doc:name="Registrar en email_log" config-ref="Database_Config">
             <db:sql><![CDATA[INSERT INTO email_log (id, recipient_email, subject, body, notification_type, status, sent_at, created_at)
                 VALUES (:id, :to, :subject, :body, 'OTHER', 'SENT', NOW(), NOW())]]></db:sql>
             <db:input-parameters><![CDATA[#[{

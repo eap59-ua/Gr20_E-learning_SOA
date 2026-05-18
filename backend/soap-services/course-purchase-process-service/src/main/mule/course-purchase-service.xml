@@ -31,7 +31,10 @@
       xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
       xmlns:http="http://www.mulesoft.org/schema/mule/http"
       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core
+      xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd 
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core
         http://www.mulesoft.org/schema/mule/core/current/mule.xsd
         http://www.mulesoft.org/schema/mule/db
         http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
@@ -41,14 +44,14 @@
         http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
 
     <configuration-properties doc:name="properties"
-                              doc:id="props-pur"
+                              doc:id="f32b2ab7-9cb0-4044-9f84-3d11e405f049"
                               file="config/application.properties"/>
 
-    <http:listener-config name="HTTP_Listener_config_pur" doc:id="http-pur">
+    <http:listener-config name="HTTP_Listener_config_pur" doc:id="736b8338-edd3-4a6f-8ac5-d60d43869dea">
         <http:listener-connection host="${http.host}" port="${http.port}"/>
     </http:listener-config>
 
-    <db:config name="MySQL_Config_pur" doc:id="db-pur">
+    <db:config name="MySQL_Config_pur" doc:id="d4e1ff6d-da90-4951-a39c-bad9dc139a82">
         <db:my-sql-connection host="${db.host}"
                               port="${db.port}"
                               user="${db.user}"
@@ -57,15 +60,15 @@
     </db:config>
 
     <!-- Clientes REST hacia los 3 servicios coordinados -->
-    <http:request-config name="Course_Config" doc:id="http-course">
+    <http:request-config name="Course_Config" doc:id="b7c4dac8-210f-47f1-9005-aaeb9693e504">
         <http:request-connection host="${course.host}" port="${course.port}"/>
     </http:request-config>
 
-    <http:request-config name="Payment_Config" doc:id="http-pay">
+    <http:request-config name="Payment_Config" doc:id="dbb8b4b2-32fb-4019-9d02-d8b7129d1a6d">
         <http:request-connection host="${payment.host}" port="${payment.port}"/>
     </http:request-config>
 
-    <http:request-config name="Enrollment_Config" doc:id="http-enr">
+    <http:request-config name="Enrollment_Config" doc:id="9242f498-8e12-48ae-b00e-0a344987191c">
         <http:request-connection host="${enrollment.host}" port="${enrollment.port}"/>
     </http:request-config>
 
@@ -167,7 +170,12 @@ ns pur http://mtis.ua.es/elearning/purchase
                           path='#["${course.basePath}/courses/" ++ vars.req.courseId]'
                           config-ref="Course_Config"
                           doc:name="GET /courses/{id}">
-                <http:response-validator>
+                <http:headers ><![CDATA[#[output application/java
+---
+{
+	rest_key : 1234
+}]]]></http:headers>
+				<http:response-validator>
                     <http:success-status-code-validator values="200..299"/>
                 </http:response-validator>
             </http:request>
@@ -327,7 +335,15 @@ output application/json
                               path="${payment.basePath}/payments/process"
                               config-ref="Payment_Config"
                               doc:name="POST /payments/process">
-                    <http:headers><![CDATA[#[{"Content-Type": "application/json"}]]]></http:headers>
+                    <http:headers><![CDATA[#[{
+	"Content-Type": "application/json",
+	rest_key: 1234
+}]]]></http:headers>
+					<http:query-params ><![CDATA[#[output application/java
+---
+{
+	rest_key : 1234
+}]]]></http:query-params>
                 </http:request>
 
                 <ee:transform doc:name="Capture payment response">
@@ -455,6 +471,11 @@ output application/json
                               config-ref="Payment_Config"
                               doc:name="POST /payments/confirm">
                     <http:headers><![CDATA[#[{"Content-Type": "application/json"}]]]></http:headers>
+					<http:query-params ><![CDATA[#[output application/java
+---
+{
+	rest_key : 1234
+}]]]></http:query-params>
                 </http:request>
 
                 <db:update config-ref="MySQL_Config_pur" doc:name="UPDATE CONFIRMED">
@@ -507,8 +528,8 @@ ns pur http://mtis.ua.es/elearning/purchase
         </ee:transform>
 
         <flow-ref name="sub-loadPurchase"/>
-
-        <choice>
+		<logger level="INFO" doc:name="Logger" doc:id="49f2a5c3-2003-4953-9f31-ee5456266d53" message="#[vars.purchase.status]"/>
+		<choice>
             <when expression="#[vars.purchase == null]">
                 <set-variable variableName="faultCode"    value="PURCHASE_NOT_FOUND"/>
                 <set-variable variableName="faultMessage"
@@ -557,14 +578,18 @@ output application/json
                     </ee:message>
                 </ee:transform>
 
-                <http:request method="POST"
+                <logger level="INFO" doc:name="Logger" doc:id="ee2029c5-03a0-4677-a4d8-bf37ad52d78c" message="#[payload]"/>
+				<http:request method="POST"
                               path="${enrollment.basePath}/enrollments"
                               config-ref="Enrollment_Config"
                               doc:name="POST /enrollments">
-                    <http:headers><![CDATA[#[{"Content-Type": "application/json"}]]]></http:headers>
+                    <http:headers><![CDATA[#[{"Content-Type": "application/json",
+	rest_key: 1234
+}]]]></http:headers>
                 </http:request>
 
-                <ee:transform doc:name="Capture enrollment response">
+                <logger level="INFO" doc:name="Logger" doc:id="44e7ba1e-26c6-4e31-af26-7248ec58ccfc" message="#[payload]"/>
+				<ee:transform doc:name="Capture enrollment response">
                     <ee:variables>
                         <ee:set-variable variableName="enrollmentResp"><![CDATA[%dw 2.0
 output application/java
@@ -573,17 +598,19 @@ payload]]></ee:set-variable>
                     </ee:variables>
                 </ee:transform>
 
-                <db:update config-ref="MySQL_Config_pur" doc:name="UPDATE COMPLETED">
+                <set-variable value="#[payload.response.id]" doc:name="Set Variable" doc:id="cb299b45-e417-49c9-90f4-640efd21b82d" variableName="enrollmentId"/>
+				<db:update config-ref="MySQL_Config_pur" doc:name="UPDATE COMPLETED">
                     <db:sql><![CDATA[UPDATE course_purchases
                                      SET enrollment_id = :enrollmentId, status = 'COMPLETED'
                                      WHERE purchase_id = :purchaseId]]></db:sql>
                     <db:input-parameters><![CDATA[#[{
-                        enrollmentId: vars.enrollmentResp.enrollmentId,
+                        enrollmentId: vars.enrollmentId,
                         purchaseId:   vars.req.purchaseId
                     }]]]></db:input-parameters>
                 </db:update>
 
-                <ee:transform doc:name="Build SOAP response">
+                <logger level="INFO" doc:name="Logger" doc:id="ec6f6aef-70c2-4389-ad6d-ab317e48c1e3" message="#[vars.enrollmentResp.enrollmentId]"/>
+				<ee:transform doc:name="Build SOAP response">
                     <ee:message>
                         <ee:set-payload><![CDATA[%dw 2.0
 output application/xml
@@ -594,7 +621,7 @@ ns pur http://mtis.ua.es/elearning/purchase
   soap#Envelope: {
     soap#Body: {
       pur#finalizePurchaseResponse: {
-        pur#enrollmentId: vars.enrollmentResp.enrollmentId,
+        pur#enrollmentId: vars.enrollmentId,
         pur#status:       "COMPLETED"
       }
     }
