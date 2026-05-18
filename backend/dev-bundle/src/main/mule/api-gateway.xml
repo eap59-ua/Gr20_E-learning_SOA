@@ -504,22 +504,58 @@ output application/json
     </flow>
 
     <flow name="api-proxy-enrollment-service">
-        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/enrollments/*" allowedMethods="GET, POST, PUT, DELETE">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/enrollments/*" allowedMethods="GET, POST, PUT, DELETE, OPTIONS">
             <http:response statusCode="200">
                 <http:headers><![CDATA[#[output application/java
----
-{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+	---
+	{
+	  "Content-Type": "application/json",
+	  "Access-Control-Allow-Origin": "*",
+	  "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+	  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key"
+	}]]]></http:headers>
             </http:response>
         </http:listener>
-        <choice doc:name="Choice" doc:id="8e640ade-0d9b-4507-929b-333f4d9af4ed" >
+        <logger level="INFO" doc:name="Logger" doc:id="c1d05212-405d-48a1-bc13-72478a8c6299" message="#[attributes.headers.rest_key]"/>
+		<choice doc:name="Choice" doc:id="8e640ade-0d9b-4507-929b-333f4d9af4ed" >
 			<when expression='#[attributes.queryParams.id == "enr-create"]'>
-				<http:request method="POST" doc:name="Request" doc:id="0e288803-8a3b-4140-be2a-26ed86f19f3a" config-ref="Gateway_Client_Enrollment" path="/api/v1/enrollments"/>
+				<http:request method="POST" doc:name="Request" doc:id="0e288803-8a3b-4140-be2a-26ed86f19f3a" config-ref="Gateway_Client_Enrollment" path="/api/v1/enrollments">
+					<http:headers ><![CDATA[#[output application/java
+---
+{
+	rest_key : attributes.headers.rest_key
+}]]]></http:headers>
+				</http:request>
 			</when>
-			<when >
-				<http:request method="GET" doc:name="Request" doc:id="cc83dc31-ec00-4e1e-a8b9-09f0ec297cfa" />
+			<when expression='#[attributes.queryParams.id == "enr-get"]'>
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="9b2be5b7-3420-4219-97ce-993f41faf1cc" variableName="uri" />
+				<http:request method="GET" doc:name="Request" doc:id="cc83dc31-ec00-4e1e-a8b9-09f0ec297cfa" config-ref="Gateway_Client_Enrollment" path="/api/v1/enrollments/{enrollmentId}">
+					<http:headers ><![CDATA[#[output application/java
+---
+{
+	rest_key : attributes.headers.rest_key
+}]]]></http:headers>
+					<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	enrollmentId : vars.uri
+}]]]></http:uri-params>
+				</http:request>
 			</when>
-			<when >
-				<http:request method="GET" doc:name="Request" doc:id="3badc33a-29e7-4bc3-becf-c7798c387f25" />
+			<when expression='#[attributes.queryParams.id == "enr-delete"]'>
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="573f02e0-3ce0-4293-aec2-8cf9571744c3" variableName="uri" />
+				<http:request method="DELETE" doc:name="Request" doc:id="3badc33a-29e7-4bc3-becf-c7798c387f25" config-ref="Gateway_Client_Enrollment" path="/api/v1/enrollments/{enrollmentId}">
+					<http:headers ><![CDATA[#[output application/java
+---
+{
+	rest_key : attributes.headers.rest_key
+}]]]></http:headers>
+					<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	enrollmentId : vars.uri
+}]]]></http:uri-params>
+				</http:request>
 			</when>
 		</choice>
         <error-handler>
