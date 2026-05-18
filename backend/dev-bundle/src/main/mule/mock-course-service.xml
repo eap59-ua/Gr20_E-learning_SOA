@@ -60,9 +60,9 @@ output application/json
 ---
 {
   data: [
-    { id: "COURSE-MTIS-2026",   title: "Integración de Sistemas Software", price: 49.99, currency: "EUR", active: true },
-    { id: "COURSE-WEB-2026",    title: "Desarrollo Web Avanzado",          price: 39.99, currency: "EUR", active: true },
-    { id: "COURSE-CLOUD-2026",  title: "Cloud Computing",                   price: 59.99, currency: "EUR", active: true }
+    { id: "COURSE-MTIS-2026",   title: "Integración de Sistemas Software", description: "Curso completo sobre SOA, servicios web y BPM.",    instructorName: "Prof. García",    category: "Ingeniería del Software", durationHours: 60, price: 49.99, currency: "EUR", active: true },
+    { id: "COURSE-WEB-2026",    title: "Desarrollo Web Avanzado",          description: "HTML5, CSS3, JS moderno, frameworks front-end.",     instructorName: "Prof. López",     category: "Desarrollo Web",          durationHours: 50, price: 39.99, currency: "EUR", active: true },
+    { id: "COURSE-CLOUD-2026",  title: "Cloud Computing",                  description: "Despliegue en cloud, contenedores y orquestación.",  instructorName: "Prof. Hernández", category: "Cloud y Sistemas",        durationHours: 70, price: 59.99, currency: "EUR", active: true }
   ],
   total: 3,
   page:  1

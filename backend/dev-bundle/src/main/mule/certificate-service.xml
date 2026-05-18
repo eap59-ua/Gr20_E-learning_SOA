@@ -248,17 +248,22 @@ ns cer http://mtis.ua.es/elearning/certificates
 output application/java
 import * from dw::Runtime
 import * from dw::core::Strings
-var uuid = uuid()
+var newUuid = uuid()
 ---
 {
-  certificateId:       uuid,
+  certificateId:       newUuid,
   repositoryReference: ("REPO-CERT-")
-                       ++ (uuid[0 to 7]),
+                       ++ (newUuid[0 to 7]),
   issueDate:           now() as String { format: "yyyy-MM-dd" }
 }]]></ee:set-variable>
                             </ee:variables>
                         </ee:transform>
 
+                        <logger level="INFO"
+                                message='#["[generateCertificate] About to INSERT: certId=" ++ vars.newCert.certificateId
+                                          ++ " grade=" ++ (vars.req.finalGrade as String)
+                                          ++ " completionDate=" ++ vars.req.completionDate
+                                          ++ " issueDate=" ++ vars.newCert.issueDate]'/>
                         <!-- 5) Persistencia -->
                         <db:insert doc:name="INSERT certificate" config-ref="MySQL_Config_cert">
                             <db:sql><![CDATA[INSERT INTO certificates
