@@ -1,0 +1,882 @@
+#%RAML 1.0
+types:
+  CourseSyncResponse:
+    type: object
+    properties:
+      created?:
+        description: Número de cursos nuevos creados
+        example:
+          strict: false
+          value: 3
+        type: integer
+      updated?:
+        description: Número de cursos existentes actualizados
+        example:
+          strict: false
+          value: 7
+        type: integer
+      errors?:
+        description: Número de entradas con error (se registran para revisión)
+        example:
+          strict: false
+          value: 0
+        type: integer
+      syncTimestamp?:
+        type: datetime
+  legacyContentId:
+    description: ID del contenido en el repositorio legacy (si aplica)
+    type: string
+  CourseUpdate:
+    type: object
+    properties:
+      title?:
+        type: string
+        minLength: 5
+        maxLength: 200
+      description?:
+        type: string
+        maxLength: 2000
+      category?:
+        type: string
+      durationHours?:
+        type: integer
+        minimum: 1
+      price?:
+        type: number
+        minimum: 0
+        format: float
+      active?:
+        type: boolean
+      legacyContentId?:
+        type: string | nil
+  Error:
+    type: object
+    properties:
+      code:
+        example:
+          strict: false
+          value: 404
+        type: integer
+        required: true
+      message:
+        example:
+          strict: false
+          value: Curso no encontrado
+        type: string
+        required: true
+      timestamp?:
+        type: datetime
+  GenShape_1:
+    description: ID del contenido en el repositorio legacy para vincular
+    type: string
+  Course:
+    type: object
+    properties:
+      id:
+        (amf-readOnly): true
+        example:
+          strict: false
+          value: c1d2e3f4-a5b6-7890-cdef-123456789abc
+        type: string
+        required: true
+      title:
+        example:
+          strict: false
+          value: Integración de Sistemas Software
+        type: string
+        required: true
+      description?:
+        example:
+          strict: false
+          value: Curso avanzado sobre metodologías y tecnologías de integración SOA.
+        type: string
+      instructorId:
+        example:
+          strict: false
+          value: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        type: string
+        required: true
+      instructorName?:
+        (amf-readOnly): true
+        example:
+          strict: false
+          value: Prof. García
+        type: string
+      category:
+        example:
+          strict: false
+          value: Ingeniería del Software
+        type: string
+        required: true
+      durationHours?:
+        example:
+          strict: false
+          value: 60
+        type: integer
+      price:
+        example:
+          strict: false
+          value: 49.99
+        type: number
+        format: float
+        required: true
+      currency?:
+        default: EUR
+        example:
+          strict: false
+          value: EUR
+        type: string
+      active?:
+        default: true
+        type: boolean
+      createdAt:
+        (amf-readOnly): true
+        type: datetime
+        required: true
+      updatedAt?:
+        (amf-readOnly): true
+        type: datetime
+      legacyContentId?:
+        example:
+          strict: false
+          value: LEGACY-2024-0042
+        type: legacyContentId | nil
+  CourseSummary:
+    type: object
+    properties:
+      id?:
+        type: string
+      title?:
+        type: string
+      instructorName?:
+        type: string
+      category?:
+        type: string
+      durationHours?:
+        type: integer
+      price?:
+        type: number
+        format: float
+      currency?:
+        type: string
+      active?:
+        type: boolean
+  CourseSyncRequest:
+    description: Payload recibido del LegacyConnectorService tras obtener metadatos del repositorio legacy
+    type: object
+    properties:
+      legacyCourses:
+        type: array
+        items:
+          type: object
+          properties:
+            legacyContentId:
+              example:
+                strict: false
+                value: LEGACY-2024-0042
+              type: string
+              required: true
+            title:
+              type: string
+              required: true
+            description:
+              type: string
+              required: false
+            category:
+              type: string
+              required: false
+            durationHours:
+              type: integer
+              required: false
+        required: true
+      syncTimestamp:
+        type: datetime
+        required: true
+  CourseCreate:
+    type: object
+    properties:
+      title:
+        example:
+          strict: false
+          value: Integración de Sistemas Software
+        type: string
+        minLength: 5
+        maxLength: 200
+        required: true
+      description?:
+        type: string
+        maxLength: 2000
+      category:
+        example:
+          strict: false
+          value: Ingeniería del Software
+        type: string
+        required: true
+      durationHours:
+        example:
+          strict: false
+          value: 60
+        type: integer
+        minimum: 1
+        required: true
+      price:
+        example:
+          strict: false
+          value: 49.99
+        type: number
+        minimum: 0
+        format: float
+        required: true
+      currency?:
+        default: EUR
+        type: string
+      legacyContentId?:
+        type: GenShape_1 | nil
+annotationTypes:
+  amf-serverDescription:
+    type: any
+  amf-exclusiveMinimum:
+    type: any
+  amf-binding:
+    type: any
+  amf-pattern:
+    type: any
+  amf-payloads:
+    type: any
+  amf-exclusiveMaximum:
+    type: any
+  amf-consumes:
+    type: any
+  amf-additionalProperties:
+    type: any
+  amf-or:
+    type: any
+  amf-url:
+    type: any
+  amf-externalDocs:
+    type: any
+  amf-flow:
+    type: any
+  amf-oasDeprecated:
+    type: any
+  amf-contact:
+    type: any
+  amf-multipleOf:
+    type: any
+  amf-xor:
+    type: any
+  amf-not:
+    type: any
+  amf-callbacks:
+    type: any
+  amf-produces:
+    type: any
+  amf-format:
+    type: any
+  amf-license:
+    type: any
+  amf-summary:
+    type: any
+  amf-responses:
+    type: any
+  amf-maximum:
+    type: any
+  amf-tags:
+    type: any
+  amf-dependencies:
+    type: any
+  amf-readOnly:
+    type: any
+  amf-tuple:
+    type: any
+  amf-examples:
+    type: any
+  amf-collectionFormat:
+    type: any
+  amf-termsOfService:
+    type: any
+  amf-servers:
+    type: any
+  amf-xone:
+    type: any
+  amf-defaultResponse:
+    type: any
+  amf-baseUriParameters:
+    type: any
+  amf-parameters:
+    type: any
+  amf-minimum:
+    type: any
+  amf-recursive:
+    type: any
+  amf-and:
+    type: any
+securitySchemes:
+  bearerAuth:
+    type: http
+    description: Token JWT obtenido mediante POST /users/login (UserService)
+    settings: {}
+title: CourseService API
+baseUri: https://elearning.ua.es/api/v1
+(amf-serverDescription): Servidor de producción
+(amf-servers):
+  -
+    url: http://localhost:3000/api/v1
+    description: Servidor de desarrollo local
+description: |
+  Servicio de gestión del catálogo de cursos de la plataforma E-Learning (Escenario 20).
+  Clasificación SOA: Entity-centric Service (Thomas Erl).
+  Contrato: contract-first, OpenAPI 3.0.
+version: 1.0.0
+(amf-contact):
+  name: Grupo 20 – MTIS 2025-2026
+  email: grupo20@alu.ua.es
+(amf-tags):
+  -
+    name: courses
+    description: Operaciones sobre el catálogo de cursos
+/courses:
+  get:
+    displayName: listCourses
+    description: Devuelve el catálogo completo de cursos. Accesible públicamente.
+    (amf-summary): Listar cursos disponibles
+    (amf-tags):
+      - courses
+    queryParameters:
+      category:
+        description: Filtrar por categoría temática
+        required: false
+        type: string
+      instructorId:
+        description: Filtrar por instructor
+        required: false
+        type: string
+      active:
+        description: Filtrar cursos activos/inactivos
+        required: false
+        default: true
+        type: boolean
+      page:
+        required: false
+        default: 1
+        type: integer
+      size:
+        required: false
+        default: 20
+        type: integer
+    responses:
+      "200":
+        description: Catálogo de cursos obtenido correctamente
+        body:
+          application/json:
+            type: object
+            properties:
+              data?:
+                type: array
+                items: CourseSummary
+              total?:
+                type: integer
+              page?:
+                type: integer
+      "500":
+        description: Error interno del servidor
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+  post:
+    displayName: createCourse
+    description: Registra un nuevo curso en la plataforma. Solo instructores y administradores.
+    (amf-summary): Crear un nuevo curso
+    (amf-tags):
+      - courses
+    body:
+      application/json: CourseCreate
+    responses:
+      "201":
+        description: Curso creado correctamente
+        body:
+          application/json: Course
+      "400":
+        description: Datos de la petición incorrectos o incompletos
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+      "401":
+        description: No autenticado — token JWT ausente o inválido
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+      "403":
+        description: No autorizado — rol insuficiente para esta operación
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+      "409":
+        description: Ya existe un curso con ese título para el mismo instructor
+        body:
+          application/json: Error
+      "500":
+        description: Error interno del servidor
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+    securedBy:
+      - bearerAuth
+/courses/{courseId}:
+  get:
+    displayName: getCourseById
+    description: Devuelve los datos completos de un curso específico.
+    (amf-summary): Obtener curso por ID
+    (amf-tags):
+      - courses
+    responses:
+      "200":
+        description: Curso encontrado
+        body:
+          application/json: Course
+      "404":
+        description: Recurso no encontrado
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+      "500":
+        description: Error interno del servidor
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+  put:
+    displayName: updateCourse
+    description: Modifica los datos de un curso existente. Solo el instructor propietario o el administrador.
+    (amf-summary): Actualizar curso
+    (amf-tags):
+      - courses
+    body:
+      application/json: CourseUpdate
+    responses:
+      "200":
+        description: Curso actualizado correctamente
+        body:
+          application/json: Course
+      "400":
+        description: Datos de la petición incorrectos o incompletos
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+      "401":
+        description: No autenticado — token JWT ausente o inválido
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+      "403":
+        description: No autorizado — rol insuficiente para esta operación
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+      "404":
+        description: Recurso no encontrado
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+      "500":
+        description: Error interno del servidor
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+    securedBy:
+      - bearerAuth
+  delete:
+    displayName: deleteCourse
+    description: |
+      Elimina un curso del catálogo. Solo se puede ejecutar si el curso
+      no tiene matrículas activas. Requiere rol administrador.
+    (amf-summary): Eliminar curso
+    (amf-tags):
+      - courses
+    responses:
+      "204":
+        description: Curso eliminado correctamente
+      "401":
+        description: No autenticado — token JWT ausente o inválido
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+      "403":
+        description: No autorizado — rol insuficiente para esta operación
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+      "404":
+        description: Recurso no encontrado
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+      "409":
+        description: No se puede eliminar — el curso tiene matrículas activas
+        body:
+          application/json: Error
+      "500":
+        description: Error interno del servidor
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+    securedBy:
+      - bearerAuth
+  uriParameters:
+    courseId:
+      description: Identificador único del curso
+      required: true
+      type: string
+/courses/sync:
+  post:
+    displayName: syncCourseCatalog
+    description: |
+      Actualiza el catálogo de cursos con los metadatos obtenidos del
+      LegacyContentRepository. Invocado por el ESB tras recibir datos del
+      LegacyConnectorService (SOAP). Solo administradores.
+    (amf-summary): Sincronizar catálogo con sistema legacy
+    (amf-tags):
+      - courses
+      
+    body:
+      application/json:
+        type: object
+        properties:
+          sourceSystem:
+            type: string
+            description: Sistema origen
+    
+          catalogId:
+            type: string
+            description: Identificador del catálogo
+    
+          modifiedSince:
+            type: datetime
+            description: Timestamp desde la última sincronización
+            
+    responses:
+      "200":
+        description: Sincronización completada correctamente
+        body:
+          application/json: CourseSyncResponse
+      "400":
+        description: Datos de la petición incorrectos o incompletos
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+      "401":
+        description: No autenticado — token JWT ausente o inválido
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+      "403":
+        description: No autorizado — rol insuficiente para esta operación
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+      "500":
+        description: Error interno del servidor
+        body:
+          application/json:
+            type: object
+            properties:
+              code:
+                example:
+                  strict: false
+                  value: 404
+                type: integer
+                required: true
+              message:
+                example:
+                  strict: false
+                  value: Curso no encontrado
+                type: string
+                required: true
+              timestamp?:
+                type: datetime
+    securedBy:
+      - bearerAuth

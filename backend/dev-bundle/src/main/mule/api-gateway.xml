@@ -1,0 +1,801 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  API Gateway REST/JSON para el Frontend
+  ============================================================================
+  Objetivo: exponer una API REST/JSON uniforme con CORS habilitado para que
+  el cliente web (frontend) no tenga que lidiar con SOAP envelopes ni con
+  problemas de CORS de cada servicio individual.
+
+  Puerto: 8094.
+
+  Endpoints expuestos:
+    GET    /api/health                       — ping
+    POST   /api/login                        — login (mock)
+    GET    /api/courses                      — listado de cursos
+    GET    /api/courses/{courseId}           — detalle de curso
+    POST   /api/buy-course                   — invoca ESB SOAP de Compra
+    GET    /api/certificates/{certificateId} — consulta certificado
+    POST   /api/issue-certificate            — invoca ESB REST Emisión
+    OPTIONS /api/*                           — CORS preflight
+
+  Todos los responses incluyen las cabeceras CORS necesarias para que el
+  navegador acepte las llamadas desde http://localhost:5173 o file://.
+  ============================================================================
+-->
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core
+        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/ee/core
+        http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/http
+        http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <http:listener-config name="API_Gateway_Listener">
+        <http:listener-connection host="0.0.0.0" port="8094"/>
+    </http:listener-config>
+
+    <!-- Cliente HTTP genérico que reutilizamos para invocar a servicios locales -->
+    <http:request-config name="Gateway_Client_Course">
+        <http:request-connection host="localhost" port="8082"/>
+    </http:request-config>
+    <http:request-config name="Gateway_Client_Cert">
+        <http:request-connection host="localhost" port="8087"/>
+    </http:request-config>
+    <http:request-config name="Gateway_Client_ESB_SOAP">
+        <http:request-connection host="localhost" port="8091"/>
+    </http:request-config>
+    <http:request-config name="Gateway_Client_ESB_REST">
+        <http:request-connection host="localhost" port="8092"/>
+    </http:request-config>
+
+    <!-- Clientes hacia el resto de servicios del equipo (para el Explorador de Servicios) -->
+    <http:request-config name="Gateway_Client_User">
+        <http:request-connection host="localhost" port="8081"/>
+    </http:request-config>
+    <http:request-config name="Gateway_Client_Enrollment">
+        <http:request-connection host="localhost" port="8083"/>
+    </http:request-config>
+    <http:request-config name="Gateway_Client_Evaluation">
+        <http:request-connection host="localhost" port="8084"/>
+    </http:request-config>
+    <http:request-config name="Gateway_Client_Email">
+        <http:request-connection host="localhost" port="8085"/>
+    </http:request-config>
+    <http:request-config name="Gateway_Client_Payment">
+        <http:request-connection host="localhost" port="8086"/>
+    </http:request-config>
+    <http:request-config name="Gateway_Client_Purchase">
+        <http:request-connection host="localhost" port="8088"/>
+    </http:request-config>
+    <http:request-config name="Gateway_Client_Legacy">
+        <http:request-connection host="localhost" port="8089"/>
+    </http:request-config>
+    <http:request-config name="Gateway_Client_UserProcess">
+        <http:request-connection host="localhost" port="8090"/>
+    </http:request-config>
+
+    <!--
+      ========================================================================
+      CORS preflight: responde a TODOS los OPTIONS con 204 y las cabeceras
+      necesarias. Sin esto el navegador bloquea las llamadas POST con JSON.
+      ========================================================================
+    -->
+    <flow name="api-cors-preflight">
+    <http:listener config-ref="API_Gateway_Listener"
+                   path="/api/*"
+                   allowedMethods="OPTIONS">
+
+        <http:response statusCode="204">
+            <http:headers><![CDATA[#[{
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key, WSKey"
+            }]]]></http:headers>
+        </http:response>
+
+    </http:listener>
+
+    <logger level="INFO" doc:name="Logger" doc:id="e6c562d7-2c8d-45e1-b0f0-4e362824b644" message="#[attributes.headers.rest_key]"/>
+		<set-payload value="#[payload]"/>
+</flow>
+    <!--
+      ========================================================================
+      GET /api/health — health check
+      ========================================================================
+    -->
+    <flow name="api-health">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/health" allowedMethods="GET">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+            </http:response>
+        </http:listener>
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: "ok",
+  service: "api-gateway",
+  timestamp: now() as String,
+  upstreamPorts: {
+    mockCourseService:           8082,
+    mockEnrollmentService:       8083,
+    mockEmailNotification:       8085,
+    mockFinancialGateway:        8086,
+    certificateService:          8087,
+    coursePurchaseProcessService: 8088,
+    esbSoapPurchase:             8091,
+    esbRestCertificate:          8092
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+    <!--
+      ========================================================================
+      POST /api/login — login mock (cualquier usuario/password vale)
+      ========================================================================
+    -->
+    <flow name="api-login">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/login" allowedMethods="POST">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+            </http:response>
+        </http:listener>
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+---
+{
+  userId:   (payload.username default "STU-0042") as String,
+  email:    ((payload.username default "STU-0042") as String) ++ "@alu.ua.es",
+  token:    "JWT-FAKE-" ++ uuid()[0 to 11],
+  role:     "STUDENT",
+  loggedAt: now() as String
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+    <!--
+      ========================================================================
+      GET /api/courses — lista de cursos (proxy a mock/CourseService)
+      ========================================================================
+    -->
+    <flow name="api-list-courses">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/courses" allowedMethods="GET">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+            </http:response>
+        </http:listener>
+        <logger level="INFO" doc:name="Logger" doc:id="da8c7f3a-c5e3-4f30-8223-9f502713c383" message="1"/>
+		<http:request method="GET" path="/api/v1/courses" config-ref="Gateway_Client_Course">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	rest_key : attributes.headers.rest_key
+}]]]></http:headers>
+		</http:request>
+        <error-handler>
+            <on-error-continue type="ANY">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  data: [
+    { id: "COURSE-MTIS-2026",  title: "Integración de Sistemas Software", price: 49.99, currency: "EUR", active: true, instructorName: "Prof. García",  category: "Ingeniería del Software", durationHours: 60 },
+    { id: "COURSE-WEB-2026",   title: "Desarrollo Web Avanzado",          price: 39.99, currency: "EUR", active: true, instructorName: "Prof. López",   category: "Desarrollo",              durationHours: 50 },
+    { id: "COURSE-CLOUD-2026", title: "Cloud Computing",                  price: 59.99, currency: "EUR", active: true, instructorName: "Prof. Hernández", category: "Sistemas",              durationHours: 70 }
+  ],
+  total: 3,
+  source: "fallback-gateway"
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <!--
+      ========================================================================
+      GET /api/courses/{courseId} — detalle de curso
+      ========================================================================
+    -->
+    <flow name="api-get-course">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/courses/{courseId}" allowedMethods="GET">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+            </http:response>
+        </http:listener>
+        <set-variable variableName="courseId" value="#[attributes.uriParams.courseId]"/>
+        <http:request method="GET"
+                      path='#["/api/v1/courses/" ++ vars.courseId]'
+                      config-ref="Gateway_Client_Course"/>
+        <error-handler>
+            <on-error-continue type="ANY">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  id: vars.courseId,
+  title: "Integración de Sistemas Software",
+  description: "Curso completo sobre SOA, servicios web y BPM",
+  instructorName: "Prof. García",
+  category: "Ingeniería del Software",
+  durationHours: 60,
+  price: 49.99,
+  currency: "EUR",
+  active: true,
+  source: "fallback-gateway"
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <!--
+      ========================================================================
+      POST /api/buy-course — invoca la orquestación ESB SOAP de Compra
+      Recibe JSON, traduce a SOAP envelope, llama a 8091, parsea respuesta.
+      ========================================================================
+    -->
+    <flow name="api-buy-course">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/buy-course" allowedMethods="POST">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="500">
+                <http:body><![CDATA[#[vars.errorPayload default payload]]]></http:body>
+                <http:headers><![CDATA[#[output application/java
+---
+{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+
+        <set-variable variableName="frontendReq" value="#[payload]"/>
+
+        <!-- 1. Construir SOAP envelope para la orquestación ESB -->
+        <ee:transform doc:name="JSON → SOAP envelope">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns esb http://mtis.ua.es/elearning/esb
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      esb#orchestratePurchaseRequest: {
+        esb#userId:        vars.frontendReq.userId,
+        esb#courseId:      vars.frontendReq.courseId,
+        esb#paymentMethod: vars.frontendReq.paymentMethod default "CARD"
+      }
+    }
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <!-- 2. Llamar a la orquestación ESB SOAP -->
+        <http:request method="POST"
+                      path="/esb/services/PurchaseOrchestration"
+                      config-ref="Gateway_Client_ESB_SOAP"
+                      doc:name="POST ESB SOAP 8091">
+            <http:headers><![CDATA[#[{
+                "Content-Type": "text/xml; charset=UTF-8",
+                "SOAPAction":   "http://mtis.ua.es/elearning/esb/orchestratePurchase"
+            }]]]></http:headers>
+        </http:request>
+
+        <!-- 3. SOAP response → JSON limpio para el frontend -->
+        <ee:transform doc:name="SOAP → JSON">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns esb http://mtis.ua.es/elearning/esb
+var body = payload.soap#Envelope.soap#Body
+---
+if (body.esb#orchestratePurchaseResponse != null)
+{
+  correlationId: body.esb#orchestratePurchaseResponse.esb#correlationId as String,
+  purchaseId:    body.esb#orchestratePurchaseResponse.esb#purchaseId    as String,
+  transactionId: body.esb#orchestratePurchaseResponse.esb#transactionId as String,
+  enrollmentId:  body.esb#orchestratePurchaseResponse.esb#enrollmentId  as String,
+  status:        body.esb#orchestratePurchaseResponse.esb#status        as String,
+  steps:         (body.esb#orchestratePurchaseResponse.esb#steps.*esb#step) map ((s) -> s as String)
+}
+else
+{
+  status:  "FAILED",
+  message: (body.soap#Fault.faultstring default "Unknown error") as String,
+  detail:  body.soap#Fault.detail
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <error-handler>
+            <on-error-continue type="ANY">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status:  "GATEWAY_ERROR",
+  message: error.description default "Error desconocido en gateway",
+  detail:  error.errorType.identifier default ""
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+                <set-variable variableName="errorPayload" value="#[payload]"/>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <!--
+      ========================================================================
+      POST /api/issue-certificate — invoca la orquestación ESB REST
+      Es prácticamente un proxy: el ESB REST ya devuelve JSON.
+      ========================================================================
+    -->
+    <flow name="api-issue-certificate">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/issue-certificate" allowedMethods="POST">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+            </http:response>
+        </http:listener>
+        <http:request method="POST"
+                      path="/esb/issue-certificate"
+                      config-ref="Gateway_Client_ESB_REST"
+                      doc:name="POST ESB REST 8092">
+            <http:headers><![CDATA[#[{"Content-Type": "application/json"}]]]></http:headers>
+        </http:request>
+        <error-handler>
+            <on-error-continue type="ANY">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: "GATEWAY_ERROR",
+  message: error.description default "?"
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <!--
+      ========================================================================
+      GET /api/certificates/{certificateId} — consulta certificado via SOAP
+      Llama internamente al CertificateService SOAP y traduce a JSON.
+      ========================================================================
+    -->
+    <flow name="api-get-certificate">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/certificates/{certificateId}" allowedMethods="GET">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+            </http:response>
+        </http:listener>
+
+        <set-variable variableName="certificateId" value="#[attributes.uriParams.certificateId]"/>
+
+        <ee:transform doc:name="Build SOAP getCertificate">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns cer http://mtis.ua.es/elearning/certificates
+---
+{
+  soap#Envelope: {
+    soap#Body: {
+      cer#getCertificateRequest: {
+        cer#certificateId: vars.certificateId
+      }
+    }
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <http:request method="POST"
+                      path="/services/CertificateService"
+                      config-ref="Gateway_Client_Cert">
+            <http:headers><![CDATA[#[{
+                "Content-Type": "text/xml; charset=UTF-8",
+                "SOAPAction":   "http://mtis.ua.es/elearning/certificates/getCertificate"
+            }]]]></http:headers>
+        </http:request>
+
+        <ee:transform doc:name="SOAP → JSON">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns cer http://mtis.ua.es/elearning/certificates
+var resp = payload.soap#Envelope.soap#Body.cer#getCertificateResponse
+---
+if (resp != null)
+{
+  certificateId:       resp.cer#certificateId as String,
+  studentId:           resp.cer#studentId as String,
+  courseId:            resp.cer#courseId as String,
+  finalGrade:          (resp.cer#finalGrade default 0) as Number,
+  completionDate:      resp.cer#completionDate as String,
+  issueDate:           resp.cer#issueDate as String,
+  status:              resp.cer#status as String,
+  repositoryReference: resp.cer#repositoryReference as String
+}
+else
+{
+  status: "NOT_FOUND",
+  certificateId: vars.certificateId
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+    <!--
+      ============================================================================
+      EXPLORADOR DE SERVICIOS — Endpoints proxy genéricos
+      ============================================================================
+      Cada proxy reenvía la petición del frontend al servicio real sin tocar
+      cuerpo ni cabeceras importantes. Añade CORS en la respuesta.
+      ============================================================================
+    -->
+
+    <!-- *** MODIFICADO: UserService proxy (8081) — rutas y headers corregidos *** -->
+    <flow name="api-proxy-user-service">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/users/*" allowedMethods="GET, POST, PUT, DELETE, OPTIONS">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key, WSKey"
+}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="500">
+                <http:headers><![CDATA[#[output application/java
+---
+{
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key, WSKey"
+}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/users") replace "/api/svc/users" with "/api/users"]'/>
+        <http:request method='#[attributes.method default "GET"]' path="#[vars.downstreamPath]" config-ref="Gateway_Client_User">
+            <http:headers><![CDATA[#[{
+                'WSKey': attributes.headers.rest_key default "1234",
+                'Content-Type': 'application/json'
+            }]]]></http:headers>
+            <http:response-validator><http:success-status-code-validator values="0..599"/></http:response-validator>
+        </http:request>
+        <error-handler>
+            <on-error-continue type="ANY">
+                <ee:transform><ee:message><ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ status: "PROXY_ERROR", target: "UserService:8081", message: error.description default "?" }]]></ee:set-payload></ee:message></ee:transform>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <flow name="api-proxy-enrollment-service">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/enrollments/*" allowedMethods="GET, POST, PUT, DELETE, OPTIONS">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+	---
+	{
+	  "Content-Type": "application/json",
+	  "Access-Control-Allow-Origin": "*",
+	  "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+	  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key"
+	}]]]></http:headers>
+            </http:response>
+        </http:listener>
+        <logger level="INFO" doc:name="Logger" doc:id="c652a1e5-0bf6-4d22-a953-6e35b752d1bc" message="#[attributes.headers.rest_key]"/>
+		<choice doc:name="Choice" doc:id="2ef5875e-6bcd-44cd-b962-e5a232be0d5c" >
+			<when expression='#[attributes.queryParams.id == "enr-create"]'>
+				<http:request method="POST" doc:name="Request" doc:id="0aaf0462-7b34-4fa8-b0a5-9e93e06e5bea" config-ref="Gateway_Client_Enrollment" path="/api/v1/enrollments">
+					<http:headers ><![CDATA[#[output application/java
+---
+{
+	rest_key : attributes.headers.rest_key
+}]]]></http:headers>
+				</http:request>
+			</when>
+			<when expression='#[attributes.queryParams.id == "enr-get"]'>
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="e711bff8-cb76-4c56-843c-8a2b13bb1f68" variableName="uri" />
+				<http:request method="GET" doc:name="Request" doc:id="608505e0-5473-41ab-8883-1435d5ef8ece" config-ref="Gateway_Client_Enrollment" path="/api/v1/enrollments/{enrollmentId}">
+					<http:headers ><![CDATA[#[output application/java
+---
+{
+	rest_key : attributes.headers.rest_key
+}]]]></http:headers>
+					<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	enrollmentId : vars.uri
+}]]]></http:uri-params>
+				</http:request>
+			</when>
+			<when expression='#[attributes.queryParams.id == "enr-delete"]'>
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="29d48187-5dd0-4126-9fdd-302ea5ea088a" variableName="uri" />
+				<http:request method="DELETE" doc:name="Request" doc:id="ba3fc59f-e1cd-4676-b74c-26a7de6e5299" config-ref="Gateway_Client_Enrollment" path="/api/v1/enrollments/{enrollmentId}">
+					<http:headers ><![CDATA[#[output application/java
+---
+{
+	rest_key : attributes.headers.rest_key
+}]]]></http:headers>
+					<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	enrollmentId : vars.uri
+}]]]></http:uri-params>
+				</http:request>
+			</when>
+		</choice>
+        <error-handler>
+            <on-error-continue type="ANY">
+                <ee:transform><ee:message><ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ status: "PROXY_ERROR", target: "EnrollmentService:8083", message: error.description default "?" }]]></ee:set-payload></ee:message></ee:transform>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <flow name="api-proxy-evaluation-service">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/evaluations/*" allowedMethods="GET, POST, PUT, DELETE">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+            </http:response>
+        </http:listener>
+        <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/evaluations") replace "/api/svc/evaluations" with "/api/v1/evaluations"]'/>
+        <http:request method='#[attributes.method default "GET"]' path="#[vars.downstreamPath]" config-ref="Gateway_Client_Evaluation">
+            <http:response-validator><http:success-status-code-validator values="0..599"/></http:response-validator>
+        </http:request>
+        <error-handler>
+            <on-error-continue type="ANY">
+                <ee:transform><ee:message><ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ status: "PROXY_ERROR", target: "EvaluationService:8084", message: error.description default "?" }]]></ee:set-payload></ee:message></ee:transform>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <!-- *** MODIFICADO: EmailNotificationService proxy (8085) — rutas y CORS corregidos *** -->
+    <flow name="api-proxy-email-service">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/notifications/*" allowedMethods="GET, POST, PUT, DELETE, OPTIONS">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key, WSKey"
+}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="500">
+                <http:headers><![CDATA[#[output application/java
+---
+{
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key, WSKey"
+}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/notifications") replace "/api/svc/notifications" with "/api/notifications"]'/>
+        <http:request method='#[attributes.method default "POST"]' path="#[vars.downstreamPath]" config-ref="Gateway_Client_Email">
+            <http:headers><![CDATA[#[{ 'Content-Type': 'application/json' }]]]></http:headers>
+            <http:response-validator><http:success-status-code-validator values="0..599"/></http:response-validator>
+        </http:request>
+        <error-handler>
+            <on-error-continue type="ANY">
+                <ee:transform><ee:message><ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ status: "PROXY_ERROR", target: "EmailNotification:8085", message: error.description default "?" }]]></ee:set-payload></ee:message></ee:transform>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <flow name="api-proxy-payment-service">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/payments/*" allowedMethods="GET, POST, PUT, DELETE">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+            </http:response>
+        </http:listener>
+        <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/payments") replace "/api/svc/payments" with "/api/payments"]'/>
+        <http:request method='#[attributes.method default "POST"]' path="#[vars.downstreamPath]" config-ref="Gateway_Client_Payment">
+            <http:response-validator><http:success-status-code-validator values="0..599"/></http:response-validator>
+        </http:request>
+        <error-handler>
+            <on-error-continue type="ANY">
+                <ee:transform><ee:message><ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ status: "PROXY_ERROR", target: "FinancialGateway:8086", message: error.description default "?" }]]></ee:set-payload></ee:message></ee:transform>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+	    <flow name="api-proxy-course-service">
+	        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/courses/*" allowedMethods="GET, POST, PUT, DELETE, OPTIONS">
+	            <http:response statusCode="200">
+	                <http:headers><![CDATA[#[output application/java
+	---
+	{
+	  "Content-Type": "application/json",
+	  "Access-Control-Allow-Origin": "*",
+	  "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+	  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key"
+	}]]]></http:headers>
+	            </http:response>
+	        </http:listener>
+			<logger level="INFO" doc:name="Logger" doc:id="ff8cddab-e083-41c4-8920-d46f36f806ba" message="#[attributes]" />
+			<logger level="INFO" doc:name="Logger" doc:id="1aae675d-5571-4211-af0e-5fcb81aa6a9e" message="#[attributes.headers.rest_key]"/>
+			<choice doc:name="Choice" doc:id="8f67b700-d84f-4d6a-a691-0cca432080e7" >
+				<when expression='#[attributes.queryParams.id == "course-list"]'>
+					<http:request method="GET" doc:name="Request" doc:id="070e6f1f-5242-4713-8033-357cef9028fa" config-ref="Gateway_Client_Course" path="/api/v1/courses">
+						<http:headers ><![CDATA[#[output application/java
+	---
+	{
+		"rest_key" : attributes.headers.rest_key
+	}]]]></http:headers>
+					</http:request>
+				</when>
+				<when expression='#[attributes.queryParams.id == "course-get"]'>
+					<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="d9958002-d085-49bc-8fe7-7e0549b404ae" variableName="uri"/>
+					<http:request method="GET" doc:name="Request" doc:id="84ffd499-d32a-4700-8953-32c8169379ba" config-ref="Gateway_Client_Course" path="/api/v1/courses/{courseId}">
+						<http:headers ><![CDATA[#[output application/java
+	---
+	{
+		rest_key : attributes.headers.rest_key
+	}]]]></http:headers>
+						<http:uri-params ><![CDATA[#[output application/java
+	---
+	{
+		"courseId" : vars.uri
+	}]]]></http:uri-params>
+					</http:request>
+				</when>
+				<when expression='#[attributes.queryParams.id == "course-create"]'>
+					<http:request method="POST" doc:name="Request" doc:id="24ec1c57-e408-4732-bd7f-452c6fd39746" config-ref="Gateway_Client_Course" path="/api/v1/courses">
+						<http:headers ><![CDATA[#[output application/java
+	---
+	{
+		rest_key : attributes.headers.rest_key
+	}]]]></http:headers>
+					</http:request>
+				</when>
+				<when expression='#[attributes.queryParams.id == "course-update"]'>
+					<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="2559ea53-8d0f-4c48-9246-985ef02dfc71" variableName="uri" />
+					<http:request method="PUT" doc:name="Request" doc:id="4e6f3882-c503-4129-8f6a-56893cec6085" config-ref="Gateway_Client_Course" path="/api/v1/courses/{courseId}">
+						<http:headers ><![CDATA[#[output application/java
+	---
+	{
+		rest_key : attributes.headers.rest_key,
+		"Content-Type" : "application/json"
+	}]]]></http:headers>
+						<http:uri-params ><![CDATA[#[output application/java
+	---
+	{
+		courseId : vars.uri
+	}]]]></http:uri-params>
+					</http:request>
+				</when>
+				<when expression='#[attributes.queryParams.id == "course-delete"]'>
+					<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="f5b02a48-73d1-4b58-b33b-35032f6f23bb" variableName="uri" />
+					<http:request method="DELETE" doc:name="Request" doc:id="23e3d695-f0c9-4ade-9ebd-aef6e2fa2790" config-ref="Gateway_Client_Course" path="/api/v1/courses/{courseId}">
+						<http:headers ><![CDATA[#[output application/java
+	---
+	{
+		rest_key : attributes.headers.rest_key
+	}]]]></http:headers>
+						<http:uri-params ><![CDATA[#[output application/java
+	---
+	{
+		courseId : vars.uri
+	}]]]></http:uri-params>
+					</http:request>
+				</when>
+			</choice>
+	        <error-handler>
+	            <on-error-continue type="ANY">
+	                <ee:transform><ee:message><ee:set-payload><![CDATA[%dw 2.0
+	output application/json
+	---
+	{ status: "PROXY_ERROR", target: "CourseService:8082", message: error.description default "?" }]]></ee:set-payload></ee:message></ee:transform>
+	            </on-error-continue>
+	        </error-handler>
+	    </flow>
+
+    <!-- *** AÑADIDO: ServicioProcesoGestionUsuarios proxy (8090) *** -->
+    <flow name="api-proxy-user-process">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/user-process/*" allowedMethods="GET, POST, PUT, DELETE, OPTIONS">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key, WSKey"
+}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="500">
+                <http:headers><![CDATA[#[output application/java
+---
+{
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key, WSKey"
+}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/user-process") replace "/api/svc/user-process" with "/proceso"]'/>
+        <http:request method='#[attributes.method default "POST"]' path="#[vars.downstreamPath]" config-ref="Gateway_Client_UserProcess">
+            <http:headers><![CDATA[#[{
+                'WSKey': attributes.headers.rest_key default "1234",
+                'Content-Type': 'application/json'
+            }]]]></http:headers>
+            <http:response-validator><http:success-status-code-validator values="0..599"/></http:response-validator>
+        </http:request>
+        <error-handler>
+            <on-error-continue type="ANY">
+                <ee:transform><ee:message><ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ status: "PROXY_ERROR", target: "UserProcess:8090", message: error.description default "?" }]]></ee:set-payload></ee:message></ee:transform>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+</mule>

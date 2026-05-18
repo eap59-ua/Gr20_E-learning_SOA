@@ -20,6 +20,7 @@
     "mock-enrollment-service.xml",
     "mock-email-notification.xml",
     "orchestration-soap-purchase.xml",
-    "orchestration-rest-certificate.xml"
+    "orchestration-rest-certificate.xml",
+    "api-gateway.xml"
   ]
 }

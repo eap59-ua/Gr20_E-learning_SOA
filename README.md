@@ -9,9 +9,9 @@ Proyecto de Integración de la asignatura **Metodologías y Tecnologías de Inte
 | Miembro | Servicios SOAP | Servicios REST |
 |---|---|---|
 | **Erardo Aldana Pessoa** | CertificateService, CoursePurchaseProcessService | — |
-| **Cayetano (Tano) Cánovas Martínez** | LegacyConnectorService | FinancialGatewayService |
-| **Joaquín (Joaco) Martínez García** | — | CourseService, EnrollmentService |
-| **Guillermo (Mo) Amorós Navalón** | — | UserService, EmailNotificationService |
+| **Cayetano Cánovas Martínez (Tano)** | LegacyConnectorService | FinancialGatewayService |
+| **Joaquín Martínez García (Joaco)** | — | CourseService, EnrollmentService |
+| **Guillermo Amorós Navalón (Mo)** | — | UserService, EmailNotificationService |
 | **Marcos Bentivegna Adrián** | — | EvaluationService, AcademicHistoryProcess |
 
 ## 📅 Calendario
