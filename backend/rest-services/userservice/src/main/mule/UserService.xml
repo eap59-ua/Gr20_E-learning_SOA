@@ -164,7 +164,7 @@ output application/json
     <sub-flow name="validar-wskey">
         <db:select doc:name="Verificar WSKey" config-ref="Database_Config">
             <db:sql>SELECT id FROM restkey WHERE rest_key = :wskey</db:sql>
-            <db:input-parameters><![CDATA[#[{'wskey': attributes.headers.WSKey}]]]></db:input-parameters>
+            <db:input-parameters><![CDATA[#[{'wskey': attributes.headers.WSKey default attributes.headers.rest_key}]]]></db:input-parameters>
         </db:select>
         <choice doc:name="¿WSKey válida?">
             <when expression="#[isEmpty(payload)]">

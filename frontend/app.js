@@ -175,6 +175,15 @@ const apiCatalog = [
             { id: "purchase-full", label: "Comprar curso (Saga ESB completa)", method: "POST", path: "/api/buy-course", body: { userId: "STU-0042", courseId: "COURSE-MTIS-2026", paymentMethod: "CARD" } }
         ]
     }
+    ,
+    {
+        group: "🔄 ServicioProcesoGestionUsuarios (Mo · 8090)",
+        ops: [
+            { id: "proc-registrar", label: "Registrar usuario + notificar", method: "POST", path: "/api/svc/user-process/registrar-usuario", body: { name: "Alumno Demo", email: "demo@alu.ua.es", password: "demo1234", role: "student" } },
+            { id: "proc-consultar", label: "Consultar usuario (proceso)", method: "GET", path: "/api/svc/user-process/consultar-usuario/{userId}", body: null, params: { userId: "STU-0042" } },
+            { id: "proc-eliminar", label: "Eliminar usuario (proceso)", method: "DELETE", path: "/api/svc/user-process/eliminar-usuario/{userId}", body: null, params: { userId: "STU-0042" } }
+        ]
+    }
 ];
 
 let explorerCurrentOp = null;
