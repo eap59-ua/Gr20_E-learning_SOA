@@ -193,7 +193,7 @@ output application/java
                 <ee:set-variable variableName="courseCurrency"><![CDATA[%dw 2.0
 output application/java
 ---
-(payload.currency default "EUR") as String]]></ee:set-variable>
+((payload.currency default payload.moneda default payload.data.currency default payload.data.moneda default "EUR") as String)]]></ee:set-variable>
                 <ee:set-variable variableName="steps"><![CDATA[%dw 2.0
 output application/java
 ---
