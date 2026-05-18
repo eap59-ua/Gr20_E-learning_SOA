@@ -77,6 +77,9 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
     <http:request-config name="Gateway_Client_Legacy">
         <http:request-connection host="localhost" port="8089"/>
     </http:request-config>
+    <http:request-config name="Gateway_Client_UserProcess">
+        <http:request-connection host="localhost" port="8090"/>
+    </http:request-config>
 
     <!--
       ========================================================================
@@ -93,13 +96,13 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
             <http:headers><![CDATA[#[{
                 "Access-Control-Allow-Origin": "*",
                 "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key"
+                "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key, WSKey"
             }]]]></http:headers>
         </http:response>
 
     </http:listener>
 
-    <logger level="INFO" doc:name="Logger" doc:id="d4c37cf0-acf1-4b09-bf42-6b4209a273a4" message="#[attributes.headers.rest_key]"/>
+    <logger level="INFO" doc:name="Logger" doc:id="e6c562d7-2c8d-45e1-b0f0-4e362824b644" message="#[attributes.headers.rest_key]"/>
 		<set-payload value="#[payload]"/>
 </flow>
     <!--
@@ -182,7 +185,7 @@ import * from dw::Runtime
 { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
             </http:response>
         </http:listener>
-        <logger level="INFO" doc:name="Logger" doc:id="de702b47-a0e0-467f-b72d-e007f2cb29fa" message="1"/>
+        <logger level="INFO" doc:name="Logger" doc:id="da8c7f3a-c5e3-4f30-8223-9f502713c383" message="1"/>
 		<http:request method="GET" path="/api/v1/courses" config-ref="Gateway_Client_Course">
 			<http:headers ><![CDATA[#[output application/java
 ---
@@ -472,25 +475,38 @@ else
       ============================================================================
       Cada proxy reenvía la petición del frontend al servicio real sin tocar
       cuerpo ni cabeceras importantes. Añade CORS en la respuesta.
-      Ruta: POST/GET/PUT/DELETE /api/svc/{servicio}/{resto-del-path}
       ============================================================================
     -->
 
+    <!-- *** MODIFICADO: UserService proxy (8081) — rutas y headers corregidos *** -->
     <flow name="api-proxy-user-service">
-        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/users/*" allowedMethods="GET, POST, PUT, DELETE">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/users/*" allowedMethods="GET, POST, PUT, DELETE, OPTIONS">
             <http:response statusCode="200">
                 <http:headers><![CDATA[#[output application/java
 ---
-{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+{
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key, WSKey"
+}]]]></http:headers>
             </http:response>
             <http:error-response statusCode="500">
                 <http:headers><![CDATA[#[output application/java
 ---
-{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+{
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key, WSKey"
+}]]]></http:headers>
             </http:error-response>
         </http:listener>
-        <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/users") replace "/api/svc/users" with "/api/v1/users"]'/>
+        <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/users") replace "/api/svc/users" with "/api/users"]'/>
         <http:request method='#[attributes.method default "GET"]' path="#[vars.downstreamPath]" config-ref="Gateway_Client_User">
+            <http:headers><![CDATA[#[{
+                'WSKey': attributes.headers.rest_key default "1234",
+                'Content-Type': 'application/json'
+            }]]]></http:headers>
             <http:response-validator><http:success-status-code-validator values="0..599"/></http:response-validator>
         </http:request>
         <error-handler>
@@ -516,10 +532,10 @@ output application/json
 	}]]]></http:headers>
             </http:response>
         </http:listener>
-        <logger level="INFO" doc:name="Logger" doc:id="c1d05212-405d-48a1-bc13-72478a8c6299" message="#[attributes.headers.rest_key]"/>
-		<choice doc:name="Choice" doc:id="8e640ade-0d9b-4507-929b-333f4d9af4ed" >
+        <logger level="INFO" doc:name="Logger" doc:id="c652a1e5-0bf6-4d22-a953-6e35b752d1bc" message="#[attributes.headers.rest_key]"/>
+		<choice doc:name="Choice" doc:id="2ef5875e-6bcd-44cd-b962-e5a232be0d5c" >
 			<when expression='#[attributes.queryParams.id == "enr-create"]'>
-				<http:request method="POST" doc:name="Request" doc:id="0e288803-8a3b-4140-be2a-26ed86f19f3a" config-ref="Gateway_Client_Enrollment" path="/api/v1/enrollments">
+				<http:request method="POST" doc:name="Request" doc:id="0aaf0462-7b34-4fa8-b0a5-9e93e06e5bea" config-ref="Gateway_Client_Enrollment" path="/api/v1/enrollments">
 					<http:headers ><![CDATA[#[output application/java
 ---
 {
@@ -528,8 +544,8 @@ output application/json
 				</http:request>
 			</when>
 			<when expression='#[attributes.queryParams.id == "enr-get"]'>
-				<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="9b2be5b7-3420-4219-97ce-993f41faf1cc" variableName="uri" />
-				<http:request method="GET" doc:name="Request" doc:id="cc83dc31-ec00-4e1e-a8b9-09f0ec297cfa" config-ref="Gateway_Client_Enrollment" path="/api/v1/enrollments/{enrollmentId}">
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="e711bff8-cb76-4c56-843c-8a2b13bb1f68" variableName="uri" />
+				<http:request method="GET" doc:name="Request" doc:id="608505e0-5473-41ab-8883-1435d5ef8ece" config-ref="Gateway_Client_Enrollment" path="/api/v1/enrollments/{enrollmentId}">
 					<http:headers ><![CDATA[#[output application/java
 ---
 {
@@ -543,8 +559,8 @@ output application/json
 				</http:request>
 			</when>
 			<when expression='#[attributes.queryParams.id == "enr-delete"]'>
-				<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="573f02e0-3ce0-4293-aec2-8cf9571744c3" variableName="uri" />
-				<http:request method="DELETE" doc:name="Request" doc:id="3badc33a-29e7-4bc3-becf-c7798c387f25" config-ref="Gateway_Client_Enrollment" path="/api/v1/enrollments/{enrollmentId}">
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="29d48187-5dd0-4126-9fdd-302ea5ea088a" variableName="uri" />
+				<http:request method="DELETE" doc:name="Request" doc:id="ba3fc59f-e1cd-4676-b74c-26a7de6e5299" config-ref="Gateway_Client_Enrollment" path="/api/v1/enrollments/{enrollmentId}">
 					<http:headers ><![CDATA[#[output application/java
 ---
 {
@@ -590,16 +606,32 @@ output application/json
         </error-handler>
     </flow>
 
+    <!-- *** MODIFICADO: EmailNotificationService proxy (8085) — rutas y CORS corregidos *** -->
     <flow name="api-proxy-email-service">
-        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/notifications/*" allowedMethods="GET, POST, PUT, DELETE">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/notifications/*" allowedMethods="GET, POST, PUT, DELETE, OPTIONS">
             <http:response statusCode="200">
                 <http:headers><![CDATA[#[output application/java
 ---
-{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+{
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key, WSKey"
+}]]]></http:headers>
             </http:response>
+            <http:error-response statusCode="500">
+                <http:headers><![CDATA[#[output application/java
+---
+{
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key, WSKey"
+}]]]></http:headers>
+            </http:error-response>
         </http:listener>
-        <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/notifications") replace "/api/svc/notifications" with "/api/v1/notifications"]'/>
+        <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/notifications") replace "/api/svc/notifications" with "/api/notifications"]'/>
         <http:request method='#[attributes.method default "POST"]' path="#[vars.downstreamPath]" config-ref="Gateway_Client_Email">
+            <http:headers><![CDATA[#[{ 'Content-Type': 'application/json' }]]]></http:headers>
             <http:response-validator><http:success-status-code-validator values="0..599"/></http:response-validator>
         </http:request>
         <error-handler>
@@ -647,11 +679,11 @@ output application/json
 	}]]]></http:headers>
 	            </http:response>
 	        </http:listener>
-			<logger level="INFO" doc:name="Logger" doc:id="0aed48c4-cb73-4e88-b777-b492dd8956f7" message="#[attributes]" />
-			<logger level="INFO" doc:name="Logger" doc:id="ddc18a12-5cf4-41a5-89d4-4e08f7a8b612" message="#[attributes.headers.rest_key]"/>
-			<choice doc:name="Choice" doc:id="ff48a779-61eb-4a90-8da1-2a176cdcadb8" >
+			<logger level="INFO" doc:name="Logger" doc:id="ff8cddab-e083-41c4-8920-d46f36f806ba" message="#[attributes]" />
+			<logger level="INFO" doc:name="Logger" doc:id="1aae675d-5571-4211-af0e-5fcb81aa6a9e" message="#[attributes.headers.rest_key]"/>
+			<choice doc:name="Choice" doc:id="8f67b700-d84f-4d6a-a691-0cca432080e7" >
 				<when expression='#[attributes.queryParams.id == "course-list"]'>
-					<http:request method="GET" doc:name="Request" doc:id="02a0ada9-7aaa-4946-ad76-faca8e0df42d" config-ref="Gateway_Client_Course" path="/api/v1/courses">
+					<http:request method="GET" doc:name="Request" doc:id="070e6f1f-5242-4713-8033-357cef9028fa" config-ref="Gateway_Client_Course" path="/api/v1/courses">
 						<http:headers ><![CDATA[#[output application/java
 	---
 	{
@@ -660,8 +692,8 @@ output application/json
 					</http:request>
 				</when>
 				<when expression='#[attributes.queryParams.id == "course-get"]'>
-					<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="44f55b64-159b-4b55-8b3a-8db3f3748be2" variableName="uri"/>
-					<http:request method="GET" doc:name="Request" doc:id="d10ef8a1-510f-4428-9963-e7d4fd7b8f06" config-ref="Gateway_Client_Course" path="/api/v1/courses/{courseId}">
+					<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="d9958002-d085-49bc-8fe7-7e0549b404ae" variableName="uri"/>
+					<http:request method="GET" doc:name="Request" doc:id="84ffd499-d32a-4700-8953-32c8169379ba" config-ref="Gateway_Client_Course" path="/api/v1/courses/{courseId}">
 						<http:headers ><![CDATA[#[output application/java
 	---
 	{
@@ -675,7 +707,7 @@ output application/json
 					</http:request>
 				</when>
 				<when expression='#[attributes.queryParams.id == "course-create"]'>
-					<http:request method="POST" doc:name="Request" doc:id="43ddb9ba-1828-4bd1-8b0d-a40377dc6518" config-ref="Gateway_Client_Course" path="/api/v1/courses">
+					<http:request method="POST" doc:name="Request" doc:id="24ec1c57-e408-4732-bd7f-452c6fd39746" config-ref="Gateway_Client_Course" path="/api/v1/courses">
 						<http:headers ><![CDATA[#[output application/java
 	---
 	{
@@ -684,8 +716,8 @@ output application/json
 					</http:request>
 				</when>
 				<when expression='#[attributes.queryParams.id == "course-update"]'>
-					<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="156a03a4-50a2-4645-a89a-3a393c76ed83" variableName="uri" />
-					<http:request method="PUT" doc:name="Request" doc:id="c67f1f90-ff57-4984-b4d9-dd7369c35141" config-ref="Gateway_Client_Course" path="/api/v1/courses/{courseId}">
+					<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="2559ea53-8d0f-4c48-9246-985ef02dfc71" variableName="uri" />
+					<http:request method="PUT" doc:name="Request" doc:id="4e6f3882-c503-4129-8f6a-56893cec6085" config-ref="Gateway_Client_Course" path="/api/v1/courses/{courseId}">
 						<http:headers ><![CDATA[#[output application/java
 	---
 	{
@@ -700,8 +732,8 @@ output application/json
 					</http:request>
 				</when>
 				<when expression='#[attributes.queryParams.id == "course-delete"]'>
-					<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="63ac0f79-62b1-4260-b8c6-91e9ffd8850e" variableName="uri" />
-					<http:request method="DELETE" doc:name="Request" doc:id="c25b68fa-c6e1-4a49-b227-916dddaa6b5e" config-ref="Gateway_Client_Course" path="/api/v1/courses/{courseId}">
+					<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="f5b02a48-73d1-4b58-b33b-35032f6f23bb" variableName="uri" />
+					<http:request method="DELETE" doc:name="Request" doc:id="23e3d695-f0c9-4ade-9ebd-aef6e2fa2790" config-ref="Gateway_Client_Course" path="/api/v1/courses/{courseId}">
 						<http:headers ><![CDATA[#[output application/java
 	---
 	{
@@ -724,5 +756,46 @@ output application/json
 	            </on-error-continue>
 	        </error-handler>
 	    </flow>
-	</mule>
-	
+
+    <!-- *** AÑADIDO: ServicioProcesoGestionUsuarios proxy (8090) *** -->
+    <flow name="api-proxy-user-process">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/user-process/*" allowedMethods="GET, POST, PUT, DELETE, OPTIONS">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[output application/java
+---
+{
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key, WSKey"
+}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="500">
+                <http:headers><![CDATA[#[output application/java
+---
+{
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key, WSKey"
+}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/user-process") replace "/api/svc/user-process" with "/proceso"]'/>
+        <http:request method='#[attributes.method default "POST"]' path="#[vars.downstreamPath]" config-ref="Gateway_Client_UserProcess">
+            <http:headers><![CDATA[#[{
+                'WSKey': attributes.headers.rest_key default "1234",
+                'Content-Type': 'application/json'
+            }]]]></http:headers>
+            <http:response-validator><http:success-status-code-validator values="0..599"/></http:response-validator>
+        </http:request>
+        <error-handler>
+            <on-error-continue type="ANY">
+                <ee:transform><ee:message><ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ status: "PROXY_ERROR", target: "UserProcess:8090", message: error.description default "?" }]]></ee:set-payload></ee:message></ee:transform>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+</mule>
