@@ -5,20 +5,20 @@ http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/em
 http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd
 http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd">
     <http:listener-config name="CourseService_openapi-httpListenerConfig">
-        <http:listener-connection host="0.0.0.0" port="8081" />
+        <http:listener-connection host="0.0.0.0" port="8082" />
     </http:listener-config>
     <apikit:config name="CourseService_openapi-config" api="CourseService_openapi.raml" outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus" />
-    <db:config name="Database_Config" doc:name="Database Config" doc:id="8bfdb76f-5d5f-486e-a169-f3f6a497a977" >
+    <db:config name="Database_Config" doc:name="Database Config" doc:id="ce52e338-6417-4c78-92b0-f438f580c491" >
 		<db:my-sql-connection host="localhost" port="3306" user="root" password="root" database="mtis" />
 	</db:config>
-	<wsc:config name="Web_Service_Consumer_Config" doc:name="Web Service Consumer Config" doc:id="4a89cc73-b9d2-4efa-8d16-10acd8622645" >
+	<wsc:config name="Web_Service_Consumer_Config" doc:name="Web Service Consumer Config" doc:id="209ca1e0-6bc2-4e15-88c5-4e9d17d0de07" >
 		<wsc:connection wsdlLocation="http://localhost:8089/LegacyConnectorService/LegacyConnectorPort?wsdl" service="LegacyConnectorService" port="LegacyConnectorPort" address="http://localhost:8089/LegacyConnectorService/LegacyConnectorPort" />
 	</wsc:config>
 	<!-- ===================== MAIN ===================== -->
-<wsc:config name="Web_Service_Consumer_Config1" doc:name="Web Service Consumer Config" doc:id="4fc519b9-2a0b-4768-930c-5abb30e447a3" >
+<wsc:config name="Web_Service_Consumer_Config1" doc:name="Web Service Consumer Config" doc:id="334a4ef1-833a-4e0e-8863-65d2dc6bb8c3" >
 		<wsc:connection wsdlLocation="http://localhost:8089/LegacyConnectorService/LegacyConnectorPort?wsdl" service="LegacyConnectorService" port="LegacyConnectorPort" address="http://localhost:8089/LegacyConnectorService/LegacyConnectorPort" />
 	</wsc:config>
-	<flow name="CourseService_openapi-main"> <http:listener config-ref="CourseService_openapi-httpListenerConfig" path="/api/*"> <http:response statusCode="#[vars.httpStatus default 200]"> <http:headers>#[vars.outboundHeaders default {}]</http:headers> </http:response> <http:error-response statusCode="#[vars.httpStatus default 500]"> <http:body>#[payload]</http:body> <http:headers>#[vars.outboundHeaders default {}]</http:headers> </http:error-response> </http:listener> <apikit:router config-ref="CourseService_openapi-config" /> <error-handler> <on-error-propagate type="APIKIT:BAD_REQUEST"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Bad request"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">400</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-propagate type="APIKIT:NOT_FOUND"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Resource not found"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">404</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-propagate type="APIKIT:METHOD_NOT_ALLOWED"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Method not allowed"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">405</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-propagate type="APIKIT:NOT_ACCEPTABLE"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Not acceptable"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">406</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-propagate type="APIKIT:UNSUPPORTED_MEDIA_TYPE"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Unsupported media type"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">415</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-propagate type="APIKIT:NOT_IMPLEMENTED"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Not Implemented"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">501</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="5f119ff9-4702-4568-b8c7-1b4f0e31553d" type="ANY:MULE" > <set-payload value="#[error.description]" doc:name="Set Payload" doc:id="575f7bed-acbf-4551-95ae-aec0af1c9f20" /> </on-error-continue> </error-handler> </flow> <flow name="CourseService_openapi-console"> <http:listener config-ref="CourseService_openapi-httpListenerConfig" path="/console/*"> <http:response statusCode="#[vars.httpStatus default 200]"> <http:headers>#[vars.outboundHeaders default {}]</http:headers> </http:response> <http:error-response statusCode="#[vars.httpStatus default 500]"> <http:body>#[payload]</http:body> <http:headers>#[vars.outboundHeaders default {}]</http:headers> </http:error-response> </http:listener> <apikit:console config-ref="CourseService_openapi-config" /> <error-handler> <on-error-propagate type="APIKIT:NOT_FOUND"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Resource not found"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">404</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> </error-handler> </flow>
+	<flow name="CourseService_openapi-main"> <http:listener config-ref="CourseService_openapi-httpListenerConfig" path="/api/v1/*"> <http:response statusCode="#[vars.httpStatus default 200]"> <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers> </http:response> <http:error-response statusCode="#[vars.httpStatus default 500]"> <http:body><![CDATA[#[payload]]]></http:body> <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers> </http:error-response> </http:listener> <apikit:router config-ref="CourseService_openapi-config" /> <error-handler> <on-error-propagate type="APIKIT:BAD_REQUEST"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Bad request"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">400</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-propagate type="APIKIT:NOT_FOUND"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Resource not found"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">404</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-propagate type="APIKIT:METHOD_NOT_ALLOWED"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Method not allowed"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">405</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-propagate type="APIKIT:NOT_ACCEPTABLE"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Not acceptable"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">406</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-propagate type="APIKIT:UNSUPPORTED_MEDIA_TYPE"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Unsupported media type"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">415</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-propagate type="APIKIT:NOT_IMPLEMENTED"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Not Implemented"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">501</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> <on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="c1c3dc56-5160-480e-a546-c840d21d4cec" type="ANY:MULE" > <set-payload value="#[error.description]" doc:name="Set Payload" doc:id="ddee0449-34aa-404b-a740-0a5c5c7b0ace" /> </on-error-continue> </error-handler> </flow> <flow name="CourseService_openapi-console"> <http:listener config-ref="CourseService_openapi-httpListenerConfig" path="/console/*"> <http:response statusCode="#[vars.httpStatus default 200]"> <http:headers>#[vars.outboundHeaders default {}]</http:headers> </http:response> <http:error-response statusCode="#[vars.httpStatus default 500]"> <http:body>#[payload]</http:body> <http:headers>#[vars.outboundHeaders default {}]</http:headers> </http:error-response> </http:listener> <apikit:console config-ref="CourseService_openapi-config" /> <error-handler> <on-error-propagate type="APIKIT:NOT_FOUND"> <ee:transform doc:name="Transform Message"> <ee:message> <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Resource not found"}]]></ee:set-payload> </ee:message> <ee:variables> <ee:set-variable variableName="httpStatus">404</ee:set-variable> </ee:variables> </ee:transform> </on-error-propagate> </error-handler> </flow>
 
 <!-- ===================== GET ALL ===================== -->
 <sub-flow name="rest_key">
@@ -229,8 +229,8 @@ output application/json
     <set-variable variableName="legacyContentId" value="#[payload.legacyContentId]"/>
 
     <!-- VALIDACIÓN REST KEY -->
-    <set-variable value="#[payload.instructorId]" doc:name="Set Variable" doc:id="da8ae6f3-9369-4a54-ac9e-361ad1a15a19" variableName="instructor_id"/>
-		<set-variable value="#[payload.instructorName]" doc:name="Set Variable" doc:id="7c6bb1fc-a8c8-4e22-8ff6-c7f0c2202ce2" variableName="instructor_name"/>
+    <set-variable value="#[payload.instructorId]" doc:name="Set Variable" doc:id="dae0796e-53f1-4fdb-9c78-5eec244eefad" variableName="instructor_id"/>
+		<set-variable value="#[payload.instructorName]" doc:name="Set Variable" doc:id="b27b0585-0064-44ec-b818-6e4b8cac82ab" variableName="instructor_name"/>
 		<flow-ref name="rest_key"/>
 
     <!-- INSERT -->
@@ -302,10 +302,10 @@ output application/json
     <!-- QUERY PARAMS -->
 
     <!-- VALIDACIÓN REST KEY -->
-    <set-variable value="#[attributes.headers.rest_key]" doc:name="Set Variable" doc:id="3cf5957a-b8ca-41f6-b295-330f1b98ee93" variableName="rest_key"/>
-		<set-variable value="#[payload.sourceSystem]" doc:name="Set Variable" doc:id="2d689ae5-7c30-4c71-8e24-72e19ceafa9b" variableName="source"/>
-		<set-variable value="#[payload.catalogId]" doc:name="Set Variable" doc:id="886f4ef4-1e43-4953-98e3-d0129e34bc55" variableName="catalog"/>
-		<set-variable value="#[payload.modifiedSince]" doc:name="Set Variable" doc:id="c1dca22c-f003-470e-a3e8-2dab6a8c9481" variableName="date"/>
+    <set-variable value="#[attributes.headers.rest_key]" doc:name="Set Variable" doc:id="8fb32e29-7893-4828-8b0b-a11d04c0da12" variableName="rest_key"/>
+		<set-variable value="#[payload.sourceSystem]" doc:name="Set Variable" doc:id="03baddf4-aaae-4230-9251-907be5583cfa" variableName="source"/>
+		<set-variable value="#[payload.catalogId]" doc:name="Set Variable" doc:id="8c310fbe-39df-44b3-a99d-bae86b7ee1b7" variableName="catalog"/>
+		<set-variable value="#[payload.modifiedSince]" doc:name="Set Variable" doc:id="4714a64d-bfd0-41a5-8cd1-60e48e1ac9a3" variableName="date"/>
 		<flow-ref name="rest_key"/>
 
     <!-- REQUEST SOAP -->
@@ -328,8 +328,8 @@ ns ns0 http://mtis.ua.es/elearning/legacy
                  operation="getExternalContents"/>
 
     <!-- PROCESS RESPONSE -->
-    <logger level="INFO" doc:name="Logger" doc:id="b3397c0a-d989-483a-ac0f-234a341ae9a0" message="#[payload]"/>
-		<ee:transform doc:name="Transform Message" doc:id="af6eb2f3-bd41-4716-a2c3-2bd41ae0409c" >
+    <logger level="INFO" doc:name="Logger" doc:id="21e7d2f1-7a10-4a1e-bde3-6011fcaee4e4" message="#[payload]"/>
+		<ee:transform doc:name="Transform Message" doc:id="1d44b396-01be-4552-be20-b46fb5567ab3" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/java
@@ -346,10 +346,10 @@ payload.body.ns0#ObtenerContenidosExternosResponse.*ns0#contents map (item) -> {
 			</ee:message>
 		</ee:transform>
 
-    <logger level="INFO" doc:name="Logger" doc:id="1665c6d3-f7a1-4ed1-a5d0-f08ffbaad49b" message="#[payload]"/>
+    <logger level="INFO" doc:name="Logger" doc:id="7de884fe-b19b-47a4-9c73-5924504017b4" message="#[payload]"/>
 		<foreach collection="#[payload]">
 
-        <db:insert doc:name="Insert" doc:id="bf5cb1b0-e949-40f9-8895-d6a4c4884acb" config-ref="Database_Config">
+        <db:insert doc:name="Insert" doc:id="24f9601d-1d0b-4a22-9d7a-6c83183604c1" config-ref="Database_Config">
 				<db:sql ><![CDATA[
                 INSERT INTO courses (
                     id,
@@ -414,8 +414,8 @@ payload.body.ns0#ObtenerContenidosExternosResponse.*ns0#contents map (item) -> {
 			</db:insert></foreach>
 
     <!-- RESPONSE -->
-		<logger level="INFO" doc:name="Logger" doc:id="cadb786f-2e31-4464-a091-107727b65f9f" message="#[vars.catalog]"/>
-		<ee:transform doc:name="Transform Message" doc:id="f24ad9e4-93cf-49ec-8498-651c934ea8cf" >
+		<logger level="INFO" doc:name="Logger" doc:id="8a764da6-f872-46f5-bad1-b0ee723b1845" message="#[vars.catalog]"/>
+		<ee:transform doc:name="Transform Message" doc:id="a3599d2e-0124-4f77-a0df-fa3c21ead84e" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/xml
@@ -431,8 +431,8 @@ ns ns0 http://mtis.ua.es/elearning/legacy
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<wsc:consume operation="synchronizeContents" doc:name="Consume" doc:id="d4a3fe0e-bc05-4f1e-935e-6dea8dd24089" config-ref="Web_Service_Consumer_Config1"/>
-		<ee:transform doc:name="Transform Message" doc:id="dd8999a8-078c-48d1-887f-40f6e6b469a1" >
+		<wsc:consume operation="synchronizeContents" doc:name="Consume" doc:id="38af65a6-ae37-47d0-a285-4e9388aa51ac" config-ref="Web_Service_Consumer_Config1"/>
+		<ee:transform doc:name="Transform Message" doc:id="56ba4b88-d301-494d-8475-484d53bdafd8" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/java
