@@ -321,16 +321,52 @@ function showExplorerResult(status, statusLabel, body) {
 }
 
 /* ----------------------------------------------------------------------- COURSES */
+function normalizeCourse(c) {
+    return {
+        id: c.id,
+        title: c.title,
+        description: c.description,
+        price: Number(c.price || 0),
+        currency: c.currency || "EUR",
+        instructorName: c.instructorName || c.instructor_name || "—",
+        durationHours: c.durationHours || c.duration_hours || 0,
+        category: c.category || "General"
+    };
+}
+
 async function loadCourses() {
     const container = document.getElementById("courses-list");
-    container.innerHTML = `<p class="col-span-full text-center text-slate-500 py-8">Cargando cursos...</p>`;
+
     try {
-        const res = await fetch(`${API_BASE}/courses`);
+        console.log("iniciando fetch...");
+
+        const res = await fetch(`${API_BASE}/courses`, {
+            method: "GET",
+            headers: {
+                "rest_key": "1234"
+            }
+        });
+
+        console.log("respuesta recibida");
+
         const data = await res.json();
+        console.log("DATA:", data);
+
+        // 🔥 AQUÍ estaba el fallo
         state.courses = data.data || [];
+
+        state.courses = data.data.map(normalizeCourse);
+
+        // 🔥 ahora sí renderizas
         renderCourses();
+
     } catch (err) {
-        container.innerHTML = `<p class="col-span-full text-center text-red-600 py-8">Error cargando cursos: ${err.message}</p>`;
+        console.error("ERROR FETCH:", err);
+        container.innerHTML = `
+            <p class="col-span-full text-center text-red-600 py-8">
+                Error cargando cursos: ${err.message}
+            </p>
+        `;
     }
 }
 
