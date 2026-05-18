@@ -1,0 +1,21 @@
+{
+  "minMuleVersion": "4.8.0",
+  "name": "financial-gateway-service",
+  "requiredProduct": "MULE",
+  "classLoaderModelLoaderDescriptor": {
+    "id": "mule",
+    "attributes": {
+      "exportedResources": []
+    }
+  },
+  "bundleDescriptorLoader": {
+    "id": "mule",
+    "attributes": {}
+  },
+  "configs": [
+    "financial-gateway-service.xml"
+  ],
+  "secureProperties": [
+    "db.password"
+  ]
+}

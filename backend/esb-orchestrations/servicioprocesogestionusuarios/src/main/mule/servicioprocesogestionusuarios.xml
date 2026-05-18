@@ -11,32 +11,20 @@
 
     <!-- ==================== CONFIGURACIÓN GLOBAL ==================== -->
 
-    <!-- Listener: este proceso escucha en puerto 8083 -->
     <http:listener-config name="Proceso-httpListenerConfig">
         <http:listener-connection host="0.0.0.0" port="8090" />
     </http:listener-config>
 
-    <!-- Request hacia UserService (puerto 8081) -->
     <http:request-config name="UserService-requestConfig">
         <http:request-connection host="localhost" port="8081" />
     </http:request-config>
 
-    <!-- Request hacia EmailNotificationService (puerto 8082) -->
+    <!-- FIX: puerto corregido de 8082 a 8085 -->
     <http:request-config name="EmailService-requestConfig">
-        <http:request-connection host="localhost" port="8082" />
+        <http:request-connection host="localhost" port="8085" />
     </http:request-config>
 
     <!-- ==================== FLUJO PRINCIPAL: REGISTRAR USUARIO ==================== -->
-    <!--
-        POST http://localhost:8083/proceso/registrar-usuario
-        Body: { "name": "...", "email": "...", "password": "...", "role": "student" }
-        Header: WSKey = 1234
-
-        Este flujo orquesta:
-        1. Llama a UserService para crear el usuario
-        2. Si se crea correctamente, llama a EmailNotificationService para notificar
-        3. Devuelve respuesta final al cliente
-    -->
     <flow name="proceso-registrar-usuario">
         <http:listener config-ref="Proceso-httpListenerConfig" path="/proceso/registrar-usuario">
             <http:response statusCode="#[vars.httpStatus default 200]" />
@@ -64,7 +52,7 @@ attributes.headers.WSKey default "1234"]]></ee:set-variable>
             </ee:variables>
         </ee:transform>
 
-        <!-- Paso 2: Llamar a UserService POST /users -->
+        <!-- Paso 2: Preparar body para UserService -->
         <ee:transform doc:name="Preparar body para UserService">
             <ee:message>
                 <ee:set-payload><![CDATA[%dw 2.0
@@ -79,11 +67,15 @@ output application/json
             </ee:message>
         </ee:transform>
 
+        <!-- FIX: añadido response-validator para que 409 no lance excepción -->
         <http:request config-ref="UserService-requestConfig"
                       method="POST"
                       path="/api/users"
                       doc:name="Crear usuario en UserService">
             <http:headers><![CDATA[#[{'WSKey': vars.wskey, 'Content-Type': 'application/json'}]]]></http:headers>
+            <http:response-validator>
+                <http:success-status-code-validator values="0..599"/>
+            </http:response-validator>
         </http:request>
 
         <!-- Paso 3: Guardar respuesta de UserService -->
@@ -123,6 +115,9 @@ output application/json
                               path="/api/notifications/email"
                               doc:name="Enviar email de bienvenida">
                     <http:headers><![CDATA[#[{'Content-Type': 'application/json'}]]]></http:headers>
+                    <http:response-validator>
+                        <http:success-status-code-validator values="0..599"/>
+                    </http:response-validator>
                 </http:request>
 
                 <!-- Paso 6a: Respuesta final exitosa -->
@@ -150,7 +145,6 @@ output application/json
             </when>
             <when expression="#[vars.userServiceStatus == 409]">
 
-                <!-- Paso 5b: Email duplicado -->
                 <ee:transform doc:name="Respuesta email duplicado">
                     <ee:message>
                         <ee:set-payload><![CDATA[%dw 2.0
@@ -169,7 +163,6 @@ output application/json
             </when>
             <otherwise>
 
-                <!-- Paso 5c: Error genérico -->
                 <ee:transform doc:name="Respuesta error genérico">
                     <ee:message>
                         <ee:set-payload><![CDATA[%dw 2.0
@@ -188,7 +181,6 @@ output application/json
             </otherwise>
         </choice>
 
-        <!-- Manejo de errores del flujo -->
         <error-handler>
             <on-error-propagate type="ANY">
                 <ee:transform doc:name="Error en el proceso">
@@ -210,11 +202,6 @@ output application/json
     </flow>
 
     <!-- ==================== FLUJO: CONSULTAR USUARIO ==================== -->
-    <!--
-        GET http://localhost:8083/proceso/consultar-usuario/{userId}
-        Header: WSKey = 1234
-        Llama a UserService GET /users/{userId} y devuelve los datos
-    -->
     <flow name="proceso-consultar-usuario">
         <http:listener config-ref="Proceso-httpListenerConfig" path="/proceso/consultar-usuario/{userId}">
             <http:response statusCode="#[vars.httpStatus default 200]" />
@@ -241,6 +228,9 @@ attributes.headers.WSKey default "1234"]]></ee:set-variable>
                       path="#['/api/users/' ++ vars.userId]"
                       doc:name="Consultar usuario en UserService">
             <http:headers><![CDATA[#[{'WSKey': vars.wskey}]]]></http:headers>
+            <http:response-validator>
+                <http:success-status-code-validator values="0..599"/>
+            </http:response-validator>
         </http:request>
 
         <ee:transform doc:name="Respuesta consulta">
@@ -270,12 +260,6 @@ output application/json
     </flow>
 
     <!-- ==================== FLUJO: ELIMINAR USUARIO ==================== -->
-    <!--
-        DELETE http://localhost:8083/proceso/eliminar-usuario/{userId}
-        Header: WSKey = 1234
-        Llama a UserService DELETE /users/{userId}
-        Si se elimina, no se envía notificación (baja lógica)
-    -->
     <flow name="proceso-eliminar-usuario">
         <http:listener config-ref="Proceso-httpListenerConfig" path="/proceso/eliminar-usuario/{userId}">
             <http:response statusCode="#[vars.httpStatus default 200]" />
@@ -302,6 +286,9 @@ attributes.headers.WSKey default "1234"]]></ee:set-variable>
                       path="#['/api/users/' ++ vars.userId]"
                       doc:name="Eliminar usuario en UserService">
             <http:headers><![CDATA[#[{'WSKey': vars.wskey}]]]></http:headers>
+            <http:response-validator>
+                <http:success-status-code-validator values="0..599"/>
+            </http:response-validator>
         </http:request>
 
         <ee:transform doc:name="Respuesta eliminación">
