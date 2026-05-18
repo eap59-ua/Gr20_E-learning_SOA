@@ -125,7 +125,7 @@ const apiCatalog = [
             { id: "course-list",   label: "Listar cursos",          method: "GET",  path: "/api/svc/courses",                body: null },
             { id: "course-get",    label: "Consultar curso",        method: "GET",  path: "/api/svc/courses/{courseId}",     body: null, params: { courseId: "COURSE-MTIS-2026" } },
             { id: "course-create", label: "Crear curso",            method: "POST", path: "/api/svc/courses",                body: { title: "Curso Demo",description: "cursillo" ,category: "Pruebas", durationHours: 30, price: 19.99, instructorId: "uuid", instructorName: "Prof. García" } },
-            { id: "course-update", label: "Actualizar curso",       method: "PUT",  path: "/api/svc/courses/{courseId}",     body: { title: "Curso Demo",description: "cursillo" ,category: "Pruebas", durationHours: 30, price: 19.99, active: "true", legacyContentId: "LEGACY-2024-0042" }, params: { courseId: "COURSE-MTIS-2026" } },
+            { id: "course-update", label: "Actualizar curso",       method: "PUT",  path: "/api/svc/courses/{courseId}",     body: { title: "Curso Demo",description: "cursillo" ,category: "Pruebas", durationHours: 30, price: 19.99, active: true, legacyContentId: "LEG-005" }, params: { courseId: "COURSE-MTIS-2026" } },
             { id: "course-delete", label: "Eliminar curso",         method: "DELETE", path: "/api/svc/courses/{courseId}",   body: null, params: { courseId: "COURSE-OBSOLETO" } }
         ]
     },
@@ -298,15 +298,27 @@ async function executeExplorerOp() {
     const fullUrlBase = `http://localhost:8094${url}`;
 
     // =========================
-    // 2. QUERY PARAMS
+    // 2. QUERY PARAMS (FORZADO STRING)
     // =========================
-    const queryParams = {
-        courseId: op.params?.courseId,
-        id: op.id
-    };
+    const queryParams = {};
 
+    // 🔥 SIEMPRE FORZAR STRING, NUNCA undefined
+    queryParams.courseId =
+        (op.params && op.params.courseId !== undefined && op.params.courseId !== null)
+            ? String(op.params.courseId)
+            : "";
+
+    queryParams.id =
+        op.id !== undefined && op.id !== null
+            ? String(op.id)
+            : "";
+
+    // 🔥 DEBUG
+    console.log("QUERY PARAMS RAW:", queryParams);
+
+    // Construcción segura
     const qs = new URLSearchParams(queryParams).toString();
-    const fullUrl = qs ? `${fullUrlBase}?${qs}` : fullUrlBase;
+    const fullUrl = `${fullUrlBase}?${qs}`;
 
     // =========================
     // 3. FETCH
@@ -334,6 +346,7 @@ async function executeExplorerOp() {
     }
 
     console.log("FINAL URL:", fullUrl);
+    console.log(opts.body)
 
     try {
         const res = await fetch(fullUrl, opts);
