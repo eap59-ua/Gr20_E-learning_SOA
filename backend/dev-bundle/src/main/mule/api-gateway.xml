@@ -511,10 +511,17 @@ output application/json
 { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
             </http:response>
         </http:listener>
-        <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/enrollments") replace "/api/svc/enrollments" with "/api/v1/enrollments"]'/>
-        <http:request method='#[attributes.method default "GET"]' path="#[vars.downstreamPath]" config-ref="Gateway_Client_Enrollment">
-            <http:response-validator><http:success-status-code-validator values="0..599"/></http:response-validator>
-        </http:request>
+        <choice doc:name="Choice" doc:id="8e640ade-0d9b-4507-929b-333f4d9af4ed" >
+			<when expression='#[attributes.queryParams.id == "enr-create"]'>
+				<http:request method="POST" doc:name="Request" doc:id="0e288803-8a3b-4140-be2a-26ed86f19f3a" config-ref="Gateway_Client_Enrollment" path="/api/v1/enrollments"/>
+			</when>
+			<when >
+				<http:request method="GET" doc:name="Request" doc:id="cc83dc31-ec00-4e1e-a8b9-09f0ec297cfa" />
+			</when>
+			<when >
+				<http:request method="GET" doc:name="Request" doc:id="3badc33a-29e7-4bc3-becf-c7798c387f25" />
+			</when>
+		</choice>
         <error-handler>
             <on-error-continue type="ANY">
                 <ee:transform><ee:message><ee:set-payload><![CDATA[%dw 2.0
@@ -591,94 +598,95 @@ output application/json
         </error-handler>
     </flow>
 
-    <flow name="api-proxy-course-service">
-        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/courses/*" allowedMethods="GET, POST, PUT, DELETE, OPTIONS">
-            <http:response statusCode="200">
-                <http:headers><![CDATA[#[output application/java
----
-{
-  "Content-Type": "application/json",
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key"
-}]]]></http:headers>
-            </http:response>
-        </http:listener>
-		<logger level="INFO" doc:name="Logger" doc:id="0aed48c4-cb73-4e88-b777-b492dd8956f7" message="#[attributes.uriParams.courseId]" />
-		<logger level="INFO" doc:name="Logger" doc:id="ddc18a12-5cf4-41a5-89d4-4e08f7a8b612" message="#[payload]"/>
-		<choice doc:name="Choice" doc:id="ff48a779-61eb-4a90-8da1-2a176cdcadb8" >
-			<when expression='#[attributes.queryParams.id == "course-list"]'>
-				<http:request method="GET" doc:name="Request" doc:id="02a0ada9-7aaa-4946-ad76-faca8e0df42d" config-ref="Gateway_Client_Course" path="/api/v1/courses">
-					<http:headers ><![CDATA[#[output application/java
----
-{
-	"rest_key" : attributes.headers.rest_key
-}]]]></http:headers>
-				</http:request>
-			</when>
-			<when expression='#[attributes.queryParams.id == "course-get"]'>
-				<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="44f55b64-159b-4b55-8b3a-8db3f3748be2" variableName="uri"/>
-				<http:request method="GET" doc:name="Request" doc:id="d10ef8a1-510f-4428-9963-e7d4fd7b8f06" config-ref="Gateway_Client_Course" path="/api/v1/courses/{courseId}">
-					<http:headers ><![CDATA[#[output application/java
----
-{
-	rest_key : attributes.headers.rest_key
-}]]]></http:headers>
-					<http:uri-params ><![CDATA[#[output application/java
----
-{
-	"courseId" : vars.uri
-}]]]></http:uri-params>
-				</http:request>
-			</when>
-			<when expression='#[attributes.queryParams.id == "course-create"]'>
-				<http:request method="POST" doc:name="Request" doc:id="43ddb9ba-1828-4bd1-8b0d-a40377dc6518" config-ref="Gateway_Client_Course" path="/api/v1/courses">
-					<http:headers ><![CDATA[#[output application/java
----
-{
-	rest_key : attributes.headers.rest_key
-}]]]></http:headers>
-				</http:request>
-			</when>
-			<when expression='#[attributes.queryParams.id == "course-update"]'>
-				<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="156a03a4-50a2-4645-a89a-3a393c76ed83" variableName="uri" />
-				<http:request method="PUT" doc:name="Request" doc:id="c67f1f90-ff57-4984-b4d9-dd7369c35141" config-ref="Gateway_Client_Course" path="/api/v1/courses/{courseId}">
-					<http:headers ><![CDATA[#[output application/java
----
-{
-	rest_key : attributes.headers.rest_key,
-	"Content-Type" : "application/json"
-}]]]></http:headers>
-					<http:uri-params ><![CDATA[#[output application/java
----
-{
-	courseId : vars.uri
-}]]]></http:uri-params>
-				</http:request>
-			</when>
-			<when expression='#[attributes.queryParams.id == "course-delete"]'>
-				<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="63ac0f79-62b1-4260-b8c6-91e9ffd8850e" variableName="uri" />
-				<http:request method="DELETE" doc:name="Request" doc:id="c25b68fa-c6e1-4a49-b227-916dddaa6b5e" config-ref="Gateway_Client_Course" path="/api/v1/courses/{courseId}">
-					<http:headers ><![CDATA[#[output application/java
----
-{
-	rest_key : attributes.headers.rest_key
-}]]]></http:headers>
-					<http:uri-params ><![CDATA[#[output application/java
----
-{
-	courseId : vars.uri
-}]]]></http:uri-params>
-				</http:request>
-			</when>
-		</choice>
-        <error-handler>
-            <on-error-continue type="ANY">
-                <ee:transform><ee:message><ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{ status: "PROXY_ERROR", target: "CourseService:8082", message: error.description default "?" }]]></ee:set-payload></ee:message></ee:transform>
-            </on-error-continue>
-        </error-handler>
-    </flow>
-</mule>
-
+	    <flow name="api-proxy-course-service">
+	        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/courses/*" allowedMethods="GET, POST, PUT, DELETE, OPTIONS">
+	            <http:response statusCode="200">
+	                <http:headers><![CDATA[#[output application/java
+	---
+	{
+	  "Content-Type": "application/json",
+	  "Access-Control-Allow-Origin": "*",
+	  "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+	  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key"
+	}]]]></http:headers>
+	            </http:response>
+	        </http:listener>
+			<logger level="INFO" doc:name="Logger" doc:id="0aed48c4-cb73-4e88-b777-b492dd8956f7" message="#[attributes]" />
+			<logger level="INFO" doc:name="Logger" doc:id="ddc18a12-5cf4-41a5-89d4-4e08f7a8b612" message="#[attributes.headers.rest_key]"/>
+			<choice doc:name="Choice" doc:id="ff48a779-61eb-4a90-8da1-2a176cdcadb8" >
+				<when expression='#[attributes.queryParams.id == "course-list"]'>
+					<http:request method="GET" doc:name="Request" doc:id="02a0ada9-7aaa-4946-ad76-faca8e0df42d" config-ref="Gateway_Client_Course" path="/api/v1/courses">
+						<http:headers ><![CDATA[#[output application/java
+	---
+	{
+		"rest_key" : attributes.headers.rest_key
+	}]]]></http:headers>
+					</http:request>
+				</when>
+				<when expression='#[attributes.queryParams.id == "course-get"]'>
+					<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="44f55b64-159b-4b55-8b3a-8db3f3748be2" variableName="uri"/>
+					<http:request method="GET" doc:name="Request" doc:id="d10ef8a1-510f-4428-9963-e7d4fd7b8f06" config-ref="Gateway_Client_Course" path="/api/v1/courses/{courseId}">
+						<http:headers ><![CDATA[#[output application/java
+	---
+	{
+		rest_key : attributes.headers.rest_key
+	}]]]></http:headers>
+						<http:uri-params ><![CDATA[#[output application/java
+	---
+	{
+		"courseId" : vars.uri
+	}]]]></http:uri-params>
+					</http:request>
+				</when>
+				<when expression='#[attributes.queryParams.id == "course-create"]'>
+					<http:request method="POST" doc:name="Request" doc:id="43ddb9ba-1828-4bd1-8b0d-a40377dc6518" config-ref="Gateway_Client_Course" path="/api/v1/courses">
+						<http:headers ><![CDATA[#[output application/java
+	---
+	{
+		rest_key : attributes.headers.rest_key
+	}]]]></http:headers>
+					</http:request>
+				</when>
+				<when expression='#[attributes.queryParams.id == "course-update"]'>
+					<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="156a03a4-50a2-4645-a89a-3a393c76ed83" variableName="uri" />
+					<http:request method="PUT" doc:name="Request" doc:id="c67f1f90-ff57-4984-b4d9-dd7369c35141" config-ref="Gateway_Client_Course" path="/api/v1/courses/{courseId}">
+						<http:headers ><![CDATA[#[output application/java
+	---
+	{
+		rest_key : attributes.headers.rest_key,
+		"Content-Type" : "application/json"
+	}]]]></http:headers>
+						<http:uri-params ><![CDATA[#[output application/java
+	---
+	{
+		courseId : vars.uri
+	}]]]></http:uri-params>
+					</http:request>
+				</when>
+				<when expression='#[attributes.queryParams.id == "course-delete"]'>
+					<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;(attributes.requestPath splitBy "/")[-1]]' doc:name="Set Variable" doc:id="63ac0f79-62b1-4260-b8c6-91e9ffd8850e" variableName="uri" />
+					<http:request method="DELETE" doc:name="Request" doc:id="c25b68fa-c6e1-4a49-b227-916dddaa6b5e" config-ref="Gateway_Client_Course" path="/api/v1/courses/{courseId}">
+						<http:headers ><![CDATA[#[output application/java
+	---
+	{
+		rest_key : attributes.headers.rest_key
+	}]]]></http:headers>
+						<http:uri-params ><![CDATA[#[output application/java
+	---
+	{
+		courseId : vars.uri
+	}]]]></http:uri-params>
+					</http:request>
+				</when>
+			</choice>
+	        <error-handler>
+	            <on-error-continue type="ANY">
+	                <ee:transform><ee:message><ee:set-payload><![CDATA[%dw 2.0
+	output application/json
+	---
+	{ status: "PROXY_ERROR", target: "CourseService:8082", message: error.description default "?" }]]></ee:set-payload></ee:message></ee:transform>
+	            </on-error-continue>
+	        </error-handler>
+	    </flow>
+	</mule>
+	
