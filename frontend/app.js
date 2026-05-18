@@ -414,6 +414,24 @@ async function loadCourses() {
         const data = await res.json();
         console.log("DATA:", data);
 
+        const bodyObj = {
+            sourceSystem: "legacy-lm",
+            catalogId: "Legacy",
+            modifiedSince: "2026-05-10T09:00:00Z"
+        };
+        
+        const res2 = await fetch(`${API_BASE}/courses/sync`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "rest_key": "1234"
+            },
+            body: JSON.stringify(bodyObj)
+        });
+
+        const data2 = await res2.json();
+        console.log("DATA2:", data2)
+
         // 🔥 AQUÍ estaba el fallo
         state.courses = data.data || [];
 

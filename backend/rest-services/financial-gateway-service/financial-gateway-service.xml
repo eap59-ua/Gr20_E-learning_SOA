@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:validation="http://www.mulesoft.org/schema/mule/validation"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+
+	<validation:config name="Validation_Config" doc:name="Validation_Config" />
+
+	<configuration-properties file="config/application.properties" doc:name="Configuration properties" />
+
+	<configuration doc:name="Global configuration" defaultErrorHandler-ref="global-error-handler" />
+
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config">
+		<http:listener-connection host="${http.host}" port="${http.port}" />
+	</http:listener-config>
+
+	<db:config name="Database_Config" doc:name="Database Config">
+		<db:my-sql-connection host="${db.host}" port="${db.port}" user="${db.user}" password="${db.password}" database="${db.name}" />
+	</db:config>
+
+	<error-handler name="global-error-handler" doc:name="global-error-handler">
+		<on-error-propagate type="HTTP:NOT_FOUND" enableNotifications="true" logException="true" doc:name="On Error Propagate">
+			<set-payload value="#[%dw 2.0&#10;output application/json&#10;---&#10;{ message: error.description default 'No encontrado' }]" doc:name="JSON error" />
+		</on-error-propagate>
+		<on-error-propagate type="ANY" enableNotifications="true" logException="true" doc:name="ANY">
+			<logger level="ERROR" doc:name="Logger" message="#[error.description]" />
+			<set-payload value="#[%dw 2.0&#10;output application/json&#10;---&#10;{&#10;  error: (error.errorType.namespace default '') ++ ':' ++ (error.errorType.identifier default ''),&#10;  message: error.description default 'Error interno'&#10;}]" doc:name="JSON error" />
+		</on-error-propagate>
+	</error-handler>
+
+	<sub-flow name="validate-api-key-subflow" doc:name="validate-api-key-subflow">
+		<set-variable value="#[payload]" variableName="savedPayload" doc:name="Guardar payload" />
+		<set-variable value="#[attributes.queryParams.rest_key default attributes.headers.rest_key]" variableName="apiKey" doc:name="apiKey" />
+		<choice doc:name="rest_key presente">
+			<when expression="#[isEmpty(vars.apiKey)]">
+				<validation:is-true expression="#[false]" message="Falta rest_key (query o cabecera)" config-ref="Validation_Config" doc:name="Falta rest_key" />
+			</when>
+			<otherwise>
+				<db:select doc:name="Validar restkey" config-ref="Database_Config">
+					<db:sql><![CDATA[SELECT COUNT(*) AS c FROM restkey WHERE rest_key = :k]]></db:sql>
+					<db:input-parameters><![CDATA[#[{ k: vars.apiKey }]]]></db:input-parameters>
+				</db:select>
+				<choice doc:name="Key valida">
+					<when expression="#[((payload default [{}])[0].c default 0) &gt; 0]">
+						<logger level="DEBUG" message="rest_key valida" doc:name="Logger" />
+					</when>
+					<otherwise>
+						<validation:is-true expression="#[false]" message="rest_key no autorizada" config-ref="Validation_Config" doc:name="rest_key invalida" />
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+		<set-payload value="#[vars.savedPayload]" doc:name="Restaurar payload" />
+	</sub-flow>
+
+	<flow name="post-payments-process-flow" doc:name="post-payments-process-flow">
+		<http:listener config-ref="HTTP_Listener_config" path="/api/payments/process" allowedMethods="POST" doc:name="POST /api/payments/process" />
+		<flow-ref name="validate-api-key-subflow" doc:name="validate-api-key-subflow" />
+		<set-variable value="#[payload]" variableName="pay" doc:name="pay" />
+		<validation:is-true config-ref="Validation_Config" expression="#[not isEmpty(vars.pay.userId)]" message="userId obligatorio" doc:name="Validar userId" />
+		<validation:is-true config-ref="Validation_Config" expression="#[vars.pay.amount != null and (vars.pay.amount as Number) &gt;= 0]" message="amount obligatorio y no negativo" doc:name="Validar amount" />
+		<set-variable value="#[if (isEmpty(vars.pay.paymentId)) uuid() else vars.pay.paymentId as String]" variableName="pid" doc:name="pid" />
+		<set-variable value="#[(vars.pay.amount default 0) as Number]" variableName="paymentAmount" doc:name="paymentAmount" />
+		<set-variable value="#[(vars.pay.currency default 'EUR')]" variableName="paymentCurrency" doc:name="paymentCurrency" />
+		<set-variable value="#[vars.pay.transactionId default ('TXN-' ++ ((vars.pid as String) replace '-' with ''))]" variableName="transactionId" doc:name="transactionId" />
+		<db:insert config-ref="Database_Config" doc:name="INSERT payment PENDING">
+			<db:sql><![CDATA[
+INSERT INTO payments (id, user_id, course_id, amount, currency, status, external_ref)
+VALUES (:id, :uid, :cid, :amount, :cur, 'PENDING', :eref)
+]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+  id: vars.pid,
+  uid: vars.pay.userId,
+  cid: if (isEmpty(vars.pay.courseId)) null else vars.pay.courseId,
+  amount: vars.paymentAmount,
+  cur: vars.paymentCurrency,
+  eref: vars.transactionId
+}]]]></db:input-parameters>
+		</db:insert>
+		<set-payload value="#[%dw 2.0
+output application/json
+---
+{
+  paymentId: vars.pid,
+  transactionId: vars.transactionId,
+  status: 'PENDING',
+  timestamp: (now() as String { format: &quot;yyyy-MM-dd'T'HH:mm:ss&quot; })
+}]" doc:name="Respuesta proceso" />
+	</flow>
+
+	<flow name="post-payments-confirm-flow" doc:name="post-payments-confirm-flow">
+		<http:listener config-ref="HTTP_Listener_config" path="/api/payments/confirm" allowedMethods="POST" doc:name="POST /api/payments/confirm" />
+		<flow-ref name="validate-api-key-subflow" doc:name="validate-api-key-subflow" />
+		<set-variable value="#[payload]" variableName="req" doc:name="req" />
+		<validation:is-true config-ref="Validation_Config" expression="#[not isEmpty(vars.req.paymentId)]" message="paymentId obligatorio" doc:name="Validar paymentId" />
+		<db:select config-ref="Database_Config" doc:name="SELECT payment PENDING">
+			<db:sql><![CDATA[SELECT id, user_id, course_id, amount, currency, status, external_ref FROM payments WHERE id=:id AND status='PENDING']]></db:sql>
+			<db:input-parameters><![CDATA[#[{ id: vars.req.paymentId }]]]></db:input-parameters>
+		</db:select>
+		<validation:is-true config-ref="Validation_Config" expression="#[sizeOf(payload default []) &gt; 0]" message="Pago no encontrado o no pendiente" doc:name="Existe pago pendiente" />
+		<set-variable value="#[payload[0]]" variableName="payment" doc:name="payment" />
+		<set-variable value='#[%dw 2.0
+output application/java
+var p = vars.payment
+---
+trim((p.external_ref default p.EXTERNAL_REF default p["external_ref"] default "") as String)]' variableName="paymentExternalRef" doc:name="paymentExternalRef" />
+		<choice doc:name="transactionId coherente">
+			<when expression="#[!isEmpty(vars.req.transactionId) and (trim(vars.req.transactionId as String) != vars.paymentExternalRef)]">
+				<validation:is-true config-ref="Validation_Config" expression="#[false]" message="transactionId no coincide" doc:name="transactionId invalido" />
+			</when>
+		</choice>
+		<db:update config-ref="Database_Config" doc:name="UPDATE CONFIRMED">
+			<db:sql><![CDATA[UPDATE payments SET status='CONFIRMED', updated_at=NOW() WHERE id=:id AND status='PENDING']]></db:sql>
+			<db:input-parameters><![CDATA[#[{ id: vars.payment.id }]]]></db:input-parameters>
+		</db:update>
+		<set-payload value="#[%dw 2.0
+output application/json
+---
+{
+  paymentId: vars.payment.id,
+  transactionId: vars.paymentExternalRef,
+  status: 'CONFIRMED',
+  timestamp: (now() as String { format: &quot;yyyy-MM-dd'T'HH:mm:ss&quot; })
+}]" doc:name="Respuesta confirm" />
+	</flow>
+
+	<flow name="post-payments-cancel-flow" doc:name="post-payments-cancel-flow">
+		<http:listener config-ref="HTTP_Listener_config" path="/api/payments/cancel" allowedMethods="POST" doc:name="POST /api/payments/cancel" />
+		<flow-ref name="validate-api-key-subflow" doc:name="validate-api-key-subflow" />
+		<set-variable value="#[payload]" variableName="req" doc:name="req" />
+		<validation:is-true config-ref="Validation_Config" expression="#[not isEmpty(vars.req.paymentId)]" message="paymentId obligatorio" doc:name="Validar paymentId" />
+		<db:select config-ref="Database_Config" doc:name="SELECT payment">
+			<db:sql><![CDATA[SELECT id, user_id, course_id, amount, currency, status, external_ref FROM payments WHERE id=:id]]></db:sql>
+			<db:input-parameters><![CDATA[#[{ id: vars.req.paymentId }]]]></db:input-parameters>
+		</db:select>
+		<validation:is-true config-ref="Validation_Config" expression="#[sizeOf(payload default []) &gt; 0]" message="Pago no encontrado" doc:name="Existe pago" />
+		<set-variable value="#[payload[0]]" variableName="payment" doc:name="payment" />
+		<db:update config-ref="Database_Config" doc:name="UPDATE CANCELLED">
+			<db:sql><![CDATA[UPDATE payments SET status='CANCELLED', updated_at=NOW() WHERE id=:id]]></db:sql>
+			<db:input-parameters><![CDATA[#[{ id: vars.payment.id }]]]></db:input-parameters>
+		</db:update>
+		<set-payload value="#[%dw 2.0
+output application/json
+---
+{
+  paymentId: vars.payment.id,
+  transactionId: vars.payment.external_ref,
+  status: 'CANCELLED',
+  timestamp: (now() as String { format: &quot;yyyy-MM-dd'T'HH:mm:ss&quot; })
+}]" doc:name="Respuesta cancel" />
+	</flow>
+</mule>
