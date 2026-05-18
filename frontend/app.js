@@ -18,6 +18,7 @@ const state = {
 document.addEventListener("DOMContentLoaded", () => {
     checkGatewayHealth();
     document.getElementById("form-login").addEventListener("submit", handleLogin);
+    document.getElementById("form-register").addEventListener("submit", handleRegister);
     document.getElementById("btn-logout").addEventListener("click", handleLogout);
     document.getElementById("btn-reload-courses").addEventListener("click", loadCourses);
     document.getElementById("form-issue-cert").addEventListener("submit", handleIssueCertificate);
@@ -71,6 +72,60 @@ async function handleLogin(e) {
         toast("Bienvenido, " + data.userId, "success");
     } catch (err) {
         toast("Error en login: " + err.message, "error");
+    }
+}
+
+function switchAuthTab(tab) {
+    const btnLogin = document.getElementById("tab-login-btn");
+    const btnRegister = document.getElementById("tab-register-btn");
+    const panelLogin = document.getElementById("panel-login");
+    const panelRegister = document.getElementById("panel-register");
+    if (tab === "login") {
+        btnLogin.classList.add("text-indigo-700", "border-indigo-600");
+        btnLogin.classList.remove("text-slate-500", "border-transparent");
+        btnRegister.classList.remove("text-indigo-700", "border-indigo-600");
+        btnRegister.classList.add("text-slate-500", "border-transparent");
+        panelLogin.classList.remove("hidden");
+        panelRegister.classList.add("hidden");
+    } else {
+        btnRegister.classList.add("text-indigo-700", "border-indigo-600");
+        btnRegister.classList.remove("text-slate-500", "border-transparent");
+        btnLogin.classList.remove("text-indigo-700", "border-indigo-600");
+        btnLogin.classList.add("text-slate-500", "border-transparent");
+        panelRegister.classList.remove("hidden");
+        panelLogin.classList.add("hidden");
+    }
+}
+
+async function handleRegister(e) {
+    e.preventDefault();
+    const name     = document.getElementById("register-name").value;
+    const email    = document.getElementById("register-email").value;
+    const password = document.getElementById("register-password").value;
+    try {
+        const res = await fetch("http://localhost:8094/api/svc/user-process/registrar-usuario", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "rest_key": "1234" },
+            body: JSON.stringify({ name, email, password, role: "student" })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            toast("✅ Cuenta creada. Revisa tu email de bienvenida.", "success");
+            // Auto-login con los datos creados
+            state.user = {
+                userId:   data.data.id,
+                email:    data.data.email,
+                token:    "JWT-LOCAL",
+                role:     data.data.role,
+                loggedAt: new Date().toISOString()
+            };
+            sessionStorage.setItem("mtis-user", JSON.stringify(state.user));
+            showApp();
+        } else {
+            toast("❌ " + (data.message || "Error al registrar"), "error");
+        }
+    } catch (err) {
+        toast("Error de red: " + err.message, "error");
     }
 }
 
@@ -173,15 +228,6 @@ const apiCatalog = [
         group: "🛒 CoursePurchase (Erardo · ESB SOAP 8091)",
         ops: [
             { id: "purchase-full", label: "Comprar curso (Saga ESB completa)", method: "POST", path: "/api/buy-course", body: { userId: "STU-0042", courseId: "COURSE-MTIS-2026", paymentMethod: "CARD" } }
-        ]
-    }
-    ,
-    {
-        group: "🔄 ServicioProcesoGestionUsuarios (Mo · 8090)",
-        ops: [
-            { id: "proc-registrar", label: "Registrar usuario + notificar", method: "POST", path: "/api/svc/user-process/registrar-usuario", body: { name: "Alumno Demo", email: "demo@alu.ua.es", password: "demo1234", role: "student" } },
-            { id: "proc-consultar", label: "Consultar usuario (proceso)", method: "GET", path: "/api/svc/user-process/consultar-usuario/{userId}", body: null, params: { userId: "STU-0042" } },
-            { id: "proc-eliminar", label: "Eliminar usuario (proceso)", method: "DELETE", path: "/api/svc/user-process/eliminar-usuario/{userId}", body: null, params: { userId: "STU-0042" } }
         ]
     }
 ];
