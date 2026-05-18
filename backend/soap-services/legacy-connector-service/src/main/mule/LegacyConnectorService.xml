@@ -1,0 +1,605 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+
+	xmlns:apikit-soap="http://www.mulesoft.org/schema/mule/apikit-soap"
+
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+
+	xsi:schemaLocation="
+
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+
+http://www.mulesoft.org/schema/mule/apikit-soap http://www.mulesoft.org/schema/mule/apikit-soap/current/mule-apikit-soap.xsd
+
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+
+
+
+	<configuration-properties file="config/application.properties" doc:name="Configuration properties" />
+
+
+
+	<http:listener-config name="api-httpListenerConfig" doc:name="HTTP Listener config">
+
+		<http:listener-connection host="${http.host}" port="${http.port}" />
+
+	</http:listener-config>
+
+
+
+	<db:config name="Database_Config" doc:name="Database Config">
+
+		<db:my-sql-connection host="${db.host}" port="${db.port}" user="${db.user}" password="${db.password}" database="${db.name}" />
+
+	</db:config>
+
+
+
+	<apikit-soap:config httpStatusVarName="httpStatus" name="soapkit-config" port="LegacyConnectorPort" service="LegacyConnectorService" wsdlLocation="api/LegacyConnectorService.wsdl" doc:name="SOAPKit Config" />
+
+
+
+	<flow name="api-main" doc:name="api-main">
+
+		<http:listener config-ref="api-httpListenerConfig" path="/LegacyConnectorService/LegacyConnectorPort" doc:name="HTTP Listener">
+
+			<http:response statusCode="#[attributes.additionalTransportData.statusCode default 200]">
+
+				<http:body>#[payload]</http:body>
+
+				<http:headers>#[attributes.protocolHeaders default {}]</http:headers>
+
+			</http:response>
+
+			<http:error-response statusCode="#[attributes.additionalTransportData.statusCode default 500]">
+
+				<http:body>#[payload]</http:body>
+
+				<http:headers>#[attributes.protocolHeaders default {}]</http:headers>
+
+			</http:error-response>
+
+		</http:listener>
+
+		<apikit-soap:router config-ref="soapkit-config" doc:name="SOAP Router">
+
+			<apikit-soap:message>#[payload]</apikit-soap:message>
+
+			<apikit-soap:attributes>#[attributes]</apikit-soap:attributes>
+
+		</apikit-soap:router>
+
+		<error-handler>
+
+			<on-error-continue type="MULE:ANY">
+
+				<logger level="ERROR" doc:name="Logger error" message='#["Error SOAP Legacy: " ++ (error.description default "Error desconocido")]' />
+
+				<set-payload value="El proceso se ha tenido que cancelar por errores durante la ejecución" doc:name="Set Payload" />
+
+			</on-error-continue>
+
+		</error-handler>
+
+	</flow>
+
+
+
+	<flow name="getExternalContents:\soapkit-config" doc:name="ObtenerContenidosExternos">
+
+		<logger level="INFO" doc:name="Logger" message="ObtenerContenidosExternos" />
+
+		<ee:transform doc:name="Extraer peticion">
+
+			<ee:variables>
+
+				<ee:set-variable variableName="req"><![CDATA[%dw 2.0
+
+output application/java
+
+var body = if (payload.Envelope?) payload.Envelope.Body else if (payload.body?) payload.body else payload
+
+var r = if (payload.sourceSystem?)
+
+  payload
+
+else
+
+  body.ObtenerContenidosExternosRequest default body.*ObtenerContenidosExternosRequest[0] default {}
+
+---
+
+{
+
+  sourceSystem: (r.sourceSystem default "legacy-lms") as String,
+
+  catalogId: r.catalogId as String default null,
+
+  modifiedSince: r.modifiedSince as DateTime default null
+
+}]]></ee:set-variable>
+
+			</ee:variables>
+
+		</ee:transform>
+
+		<try doc:name="Try">
+
+			<db:select config-ref="Database_Config" doc:name="SELECT contenidos_externos">
+
+				<db:sql><![CDATA[
+
+SELECT external_content_id, titulo, descripcion, categoria, ultima_modificacion, checksum
+
+FROM contenidos_externos
+
+WHERE activo = TRUE
+
+  AND sistema_origen = :sistema
+
+  AND (:catalogId IS NULL OR categoria = :catalogId)
+
+  AND (:modifiedSince IS NULL OR ultima_modificacion >= :modifiedSince)
+
+ORDER BY external_content_id
+
+]]></db:sql>
+
+				<db:input-parameters>#[{
+
+  sistema: vars.req.sourceSystem,
+
+  catalogId: vars.req.catalogId,
+
+  modifiedSince: vars.req.modifiedSince
+
+}]</db:input-parameters>
+
+			</db:select>
+
+			<error-handler>
+
+				<on-error-continue type="DB:*">
+
+					<raise-error type="MULE:ANY" description="400 BAD REQUEST" />
+
+				</on-error-continue>
+
+			</error-handler>
+
+		</try>
+
+		<logger level="INFO" doc:name="Logger resultado" message='#["Contenidos encontrados: " ++ sizeOf(payload default [])]' />
+
+		<ee:transform doc:name="Respuesta SOAP">
+
+			<ee:message>
+
+				<ee:set-payload><![CDATA[%dw 2.0
+
+output application/java
+
+ns ns0 http://mtis.ua.es/elearning/legacy
+
+fun asXmlDateTime(v) =
+
+  if (v == null) null
+
+  else (v as DateTime) as String { format: "yyyy-MM-dd'T'HH:mm:ss" }
+
+fun toContent(row) = {
+
+  ns0#externalContentId: row.external_content_id,
+
+  ns0#title: row.titulo,
+
+  ns0#description: row.descripcion,
+
+  ns0#category: row.categoria,
+
+  ns0#lastModified: asXmlDateTime(row.ultima_modificacion),
+
+  ns0#checksum: row.checksum
+
+}
+
+---
+
+{
+
+  body: {
+
+    ns0#ObtenerContenidosExternosResponse: {
+
+      ns0#sourceSystem: vars.req.sourceSystem,
+
+      ns0#contents: (payload default []) map toContent($)
+
+    }
+
+  } write "application/xml"
+
+}]]></ee:set-payload>
+
+			</ee:message>
+
+		</ee:transform>
+
+	</flow>
+
+
+
+	<flow name="synchronizeContents:\soapkit-config" doc:name="SincronizarDatosRepositorio">
+
+		<logger level="INFO" doc:name="Logger" message="SincronizarDatosRepositorio" />
+
+		<ee:transform doc:name="Extraer peticion">
+
+			<ee:variables>
+
+				<ee:set-variable variableName="req"><![CDATA[%dw 2.0
+
+output application/java
+
+var body = if (payload.Envelope?) payload.Envelope.Body else if (payload.body?) payload.body else payload
+
+var r = if (payload.sourceSystem?)
+
+  payload
+
+else
+
+  body.SincronizarDatosRepositorioRequest default body.*SincronizarDatosRepositorioRequest[0] default {}
+
+---
+
+{
+
+  sourceSystem: (r.sourceSystem default "legacy-lms") as String,
+
+  catalogId: r.catalogId as String default null,
+
+  requestedBy: r.requestedBy as String default null,
+
+  requestId: r.requestId as String default null
+
+}]]></ee:set-variable>
+
+				<ee:set-variable variableName="syncId"><![CDATA[%dw 2.0
+
+output application/java
+
+---
+
+uuid() as String]]></ee:set-variable>
+
+				<ee:set-variable variableName="syncStarted"><![CDATA[%dw 2.0
+
+output application/java
+
+---
+
+now()]]></ee:set-variable>
+
+			</ee:variables>
+
+		</ee:transform>
+
+		<try doc:name="Try">
+
+			<db:select config-ref="Database_Config" doc:name="COUNT contenidos">
+
+				<db:sql><![CDATA[
+
+SELECT COUNT(*) AS total
+
+FROM contenidos_externos
+
+WHERE activo = TRUE
+
+  AND sistema_origen = :sistema
+
+  AND (:catalogId IS NULL OR categoria = :catalogId)
+
+]]></db:sql>
+
+				<db:input-parameters>#[{
+
+  sistema: vars.req.sourceSystem,
+
+  catalogId: vars.req.catalogId
+
+}]</db:input-parameters>
+
+			</db:select>
+
+			<error-handler>
+
+				<on-error-continue type="DB:*">
+
+					<raise-error type="MULE:ANY" description="400 BAD REQUEST" />
+
+				</on-error-continue>
+
+			</error-handler>
+
+		</try>
+
+		<set-variable value="#[((payload default [{}])[0].total default 0) as Number]" variableName="syncTotal" doc:name="syncTotal" />
+
+		<logger level="INFO" doc:name="Logger resultado" message='#["Sincronizacion, contenidos: " ++ vars.syncTotal]' />
+
+		<try doc:name="Try insert">
+
+			<db:insert config-ref="Database_Config" doc:name="INSERT sincronizacion">
+
+				<db:sql><![CDATA[
+
+INSERT INTO sincronizaciones_repositorio (
+
+  id, sistema_origen, catalog_id, solicitado_por, request_id,
+
+  estado, elementos_procesados, elementos_actualizados, elementos_fallidos,
+
+  iniciado_en, finalizado_en, mensaje
+
+) VALUES (
+
+  :id, :sistema, :catalogId, :requestedBy, :requestId,
+
+  'SUCCESS', :total, :total, 0,
+
+  :started, :finished, :mensaje
+
+)
+
+]]></db:sql>
+
+				<db:input-parameters>#[{
+
+  id: vars.syncId,
+
+  sistema: vars.req.sourceSystem,
+
+  catalogId: vars.req.catalogId,
+
+  requestedBy: vars.req.requestedBy,
+
+  requestId: vars.req.requestId,
+
+  total: vars.syncTotal,
+
+  started: vars.syncStarted,
+
+  finished: now(),
+
+  mensaje: "Sincronizacion del repositorio legacy completada"
+
+}]</db:input-parameters>
+
+			</db:insert>
+
+			<error-handler>
+
+				<on-error-continue type="DB:*">
+
+					<raise-error type="MULE:ANY" description="500 ERROR" />
+
+				</on-error-continue>
+
+			</error-handler>
+
+		</try>
+
+		<ee:transform doc:name="Respuesta SOAP">
+
+			<ee:message>
+
+				<ee:set-payload><![CDATA[%dw 2.0
+
+output application/java
+
+ns ns0 http://mtis.ua.es/elearning/legacy
+
+var finished = now()
+
+---
+
+{
+
+  body: {
+
+    ns0#SincronizarDatosRepositorioResponse: {
+
+      ns0#syncId: vars.syncId,
+
+      ns0#status: "SUCCESS",
+
+      ns0#processedItems: vars.syncTotal,
+
+      ns0#updatedItems: vars.syncTotal,
+
+      ns0#failedItems: 0,
+
+      ns0#startedAt: (vars.syncStarted as DateTime) as String { format: "yyyy-MM-dd'T'HH:mm:ss" },
+
+      ns0#finishedAt: (finished as DateTime) as String { format: "yyyy-MM-dd'T'HH:mm:ss" },
+
+      ns0#message: "Sincronizacion del repositorio legacy completada (" ++ vars.syncTotal ++ " contenidos)"
+
+    }
+
+  } write "application/xml"
+
+}]]></ee:set-payload>
+
+			</ee:message>
+
+		</ee:transform>
+
+	</flow>
+
+
+
+	<flow name="ConsultarMetadatosContenido:\soapkit-config" doc:name="ConsultarMetadatosContenido">
+
+		<logger level="INFO" doc:name="Logger" message="ConsultarMetadatosContenido" />
+
+		<ee:transform doc:name="Extraer peticion">
+
+			<ee:variables>
+
+				<ee:set-variable variableName="req"><![CDATA[%dw 2.0
+
+output application/java
+
+var body = if (payload.Envelope?) payload.Envelope.Body else if (payload.body?) payload.body else payload
+
+var r = if (payload.externalContentId? or payload.sourceSystem?)
+
+  payload
+
+else
+
+  body.ConsultarMetadatosContenidoRequest default body.*ConsultarMetadatosContenidoRequest[0] default {}
+
+---
+
+{
+
+  sourceSystem: (r.sourceSystem default "legacy-lms") as String,
+
+  externalContentId: (r.externalContentId default "") as String
+
+}]]></ee:set-variable>
+
+			</ee:variables>
+
+		</ee:transform>
+
+		<choice doc:name="Id valido">
+
+			<when expression="#[isEmpty(vars.req.externalContentId)]">
+
+				<raise-error type="MULE:ANY" description="400 BAD REQUEST - externalContentId es obligatorio" />
+
+			</when>
+
+		</choice>
+
+		<try doc:name="Try">
+
+			<db:select config-ref="Database_Config" doc:name="SELECT por external_content_id">
+
+				<db:sql><![CDATA[
+
+SELECT external_content_id, titulo, descripcion, categoria, ultima_modificacion, checksum
+
+FROM contenidos_externos
+
+WHERE activo = TRUE
+
+  AND external_content_id = :id
+
+  AND sistema_origen = :sistema
+
+LIMIT 1
+
+]]></db:sql>
+
+				<db:input-parameters>#[{
+
+  id: vars.req.externalContentId,
+
+  sistema: vars.req.sourceSystem
+
+}]</db:input-parameters>
+
+			</db:select>
+
+			<error-handler>
+
+				<on-error-continue type="DB:*">
+
+					<raise-error type="MULE:ANY" description="400 BAD REQUEST" />
+
+				</on-error-continue>
+
+			</error-handler>
+
+		</try>
+
+		<choice doc:name="Existe contenido">
+
+			<when expression="#[sizeOf(payload default []) == 0]">
+
+				<raise-error type="MULE:ANY" description="404 NOT FOUND" />
+
+			</when>
+
+		</choice>
+
+		<ee:transform doc:name="Respuesta SOAP">
+
+			<ee:message>
+
+				<ee:set-payload><![CDATA[%dw 2.0
+
+output application/java
+
+ns ns0 http://mtis.ua.es/elearning/legacy
+
+var row = payload[0]
+
+---
+
+{
+
+  body: {
+
+    ns0#ConsultarMetadatosContenidoResponse: {
+
+      ns0#metadata: {
+
+        ns0#externalContentId: row.external_content_id,
+
+        ns0#title: row.titulo,
+
+        ns0#description: row.descripcion,
+
+        ns0#category: row.categoria,
+
+        ns0#lastModified: if (row.ultima_modificacion == null) null
+
+          else (row.ultima_modificacion as DateTime) as String { format: "yyyy-MM-dd'T'HH:mm:ss" },
+
+        ns0#checksum: row.checksum
+
+      }
+
+    }
+
+  } write "application/xml"
+
+}]]></ee:set-payload>
+
+			</ee:message>
+
+		</ee:transform>
+
+	</flow>
+
+</mule>
