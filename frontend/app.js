@@ -124,8 +124,8 @@ const apiCatalog = [
         ops: [
             { id: "course-list",   label: "Listar cursos",          method: "GET",  path: "/api/svc/courses",                body: null },
             { id: "course-get",    label: "Consultar curso",        method: "GET",  path: "/api/svc/courses/{courseId}",     body: null, params: { courseId: "COURSE-MTIS-2026" } },
-            { id: "course-create", label: "Crear curso",            method: "POST", path: "/api/svc/courses",                body: { title: "Curso Demo", category: "Pruebas", durationHours: 30, price: 19.99 } },
-            { id: "course-update", label: "Actualizar curso",       method: "PUT",  path: "/api/svc/courses/{courseId}",     body: { price: 29.99 }, params: { courseId: "COURSE-MTIS-2026" } },
+            { id: "course-create", label: "Crear curso",            method: "POST", path: "/api/svc/courses",                body: { title: "Curso Demo",description: "cursillo" ,category: "Pruebas", durationHours: 30, price: 19.99, instructorId: "uuid", instructorName: "Prof. García" } },
+            { id: "course-update", label: "Actualizar curso",       method: "PUT",  path: "/api/svc/courses/{courseId}",     body: { title: "Curso Demo",description: "cursillo" ,category: "Pruebas", durationHours: 30, price: 19.99, active: "true", legacyContentId: "LEGACY-2024-0042" }, params: { courseId: "COURSE-MTIS-2026" } },
             { id: "course-delete", label: "Eliminar curso",         method: "DELETE", path: "/api/svc/courses/{courseId}",   body: null, params: { courseId: "COURSE-OBSOLETO" } }
         ]
     },
@@ -269,43 +269,83 @@ async function executeExplorerOp() {
     if (!explorerCurrentOp) return;
     const op = explorerCurrentOp;
 
-    // Resolver parámetros de URL
+    // =========================
+    // 1. PATH PARAMS
+    // =========================
     let url = op.path;
+
+    const pathParams = { ...(op.params || {}) };
+
     document.querySelectorAll("[data-param]").forEach(input => {
         const k = input.dataset.param;
-        const v = encodeURIComponent(input.value);
-        url = url.replace(`{${k}}`, v);
-    });
-    const fullUrl = `http://localhost:8094${url}`;
+        const v = input.value;
 
-    const opts = {
-        method: op.method,
-        headers: {}
-    };
-    if (op.method !== "GET" && op.method !== "DELETE") {
-        const bodyStr = document.getElementById("explorer-body").value;
-        if (bodyStr.trim()) {
-            try {
-                JSON.parse(bodyStr); // validar
-                opts.headers["Content-Type"] = "application/json";
-                opts.body = bodyStr;
-            } catch (e) {
-                showExplorerResult(null, "ERROR — JSON inválido en el body: " + e.message);
-                return;
-            }
+        if (v !== undefined && v !== null && v !== "") {
+            pathParams[k] = v;
         }
+    });
+
+    Object.entries(pathParams).forEach(([k, v]) => {
+        url = url.replace(`{${k}}`, encodeURIComponent(v));
+    });
+
+    // 🚨 FAIL FAST: si queda algún {param}
+    if (url.includes("{")) {
+        console.error("Falta resolver path params:", url);
+        return;
     }
 
-    const startTime = Date.now();
+    const fullUrlBase = `http://localhost:8094${url}`;
+
+    // =========================
+    // 2. QUERY PARAMS
+    // =========================
+    const queryParams = {
+        courseId: op.params?.courseId,
+        id: op.id
+    };
+
+    const qs = new URLSearchParams(queryParams).toString();
+    const fullUrl = qs ? `${fullUrlBase}?${qs}` : fullUrlBase;
+
+    // =========================
+    // 3. FETCH
+    // =========================
+    const opts = {
+        method: op.method,
+        headers: {
+            "rest_key": "1234"
+        }
+    };
+
+    if (op.method !== "GET" && op.method !== "DELETE") {
+        const bodyStr = document.getElementById("explorer-body").value;
+    
+        let bodyObj;
+        try {
+            bodyObj = bodyStr.trim() ? JSON.parse(bodyStr) : {};
+        } catch (e) {
+            showExplorerResult(null, "ERROR JSON: " + e.message);
+            return;
+        }
+    
+        opts.headers["Content-Type"] = "application/json";
+        opts.body = JSON.stringify(bodyObj);
+    }
+
+    console.log("FINAL URL:", fullUrl);
+
     try {
         const res = await fetch(fullUrl, opts);
-        const elapsed = Date.now() - startTime;
         const text = await res.text();
-        let parsed = text;
-        try { parsed = JSON.stringify(JSON.parse(text), null, 2); } catch (e) {}
-        showExplorerResult(res.status, `${res.status} ${res.statusText} · ${elapsed} ms`, parsed);
+
+        showExplorerResult(
+            res.status,
+            `${res.status} ${res.statusText}`,
+            text
+        );
     } catch (err) {
-        showExplorerResult(0, `ERROR DE RED · ${err.message}`);
+        showExplorerResult(0, `ERROR DE RED: ${err.message}`);
     }
 }
 
