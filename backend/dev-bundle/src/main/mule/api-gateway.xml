@@ -644,16 +644,39 @@ output application/json
         </error-handler>
     </flow>
 
+    <!-- FinancialGatewayService (8086): CORS + reenvío rest_key (cabecera → query) -->
     <flow name="api-proxy-payment-service">
-        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/payments/*" allowedMethods="GET, POST, PUT, DELETE">
+        <http:listener config-ref="API_Gateway_Listener" path="/api/svc/payments/*" allowedMethods="GET, POST, PUT, DELETE, OPTIONS">
             <http:response statusCode="200">
                 <http:headers><![CDATA[#[output application/java
 ---
-{ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }]]]></http:headers>
+{
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key, WSKey"
+}]]]></http:headers>
             </http:response>
+            <http:error-response statusCode="500">
+                <http:headers><![CDATA[#[output application/java
+---
+{
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, rest_key, WSKey"
+}]]]></http:headers>
+            </http:error-response>
         </http:listener>
         <set-variable variableName="downstreamPath" value='#[(attributes.requestPath default "/api/svc/payments") replace "/api/svc/payments" with "/api/payments"]'/>
         <http:request method='#[attributes.method default "POST"]' path="#[vars.downstreamPath]" config-ref="Gateway_Client_Payment">
+            <http:headers><![CDATA[#[{ 'Content-Type': 'application/json' }]]]></http:headers>
+            <http:query-params><![CDATA[#[%dw 2.0
+output application/java
+var qp = attributes.queryParams default {}
+---
+qp ++ {
+  rest_key: (attributes.headers.rest_key default qp.rest_key default "1234") as String
+}]]]></http:query-params>
             <http:response-validator><http:success-status-code-validator values="0..599"/></http:response-validator>
         </http:request>
         <error-handler>
